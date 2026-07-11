@@ -1,64 +1,38 @@
 package com.follow.clash
 
+import android.content.Intent
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.ServiceDelegate
-import com.follow.clash.common.formatString
 import com.follow.clash.common.intent
-import com.follow.clash.service.IAckInterface
-import com.follow.clash.service.ICallbackInterface
-import com.follow.clash.service.IEventInterface
-import com.follow.clash.service.IRemoteInterface
-import com.follow.clash.service.IResultInterface
-import com.follow.clash.service.IVoidInterface
-import com.follow.clash.service.RemoteService
+import com.follow.clash.core.Core
+import com.follow.clash.service.CommonService
+import com.follow.clash.service.IBaseService
+import com.follow.clash.service.State
+import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object Service {
-    private val delegate by lazy {
-        ServiceDelegate<IRemoteInterface>(
-            RemoteService::class.intent, ::handleServiceDisconnected
-        ) {
-            IRemoteInterface.Stub.asInterface(it)
-        }
-    }
+    private val runLock = Mutex()
+    private var delegate: ServiceDelegate<IBaseService>? = null
+    private var intent: Intent? = null
+    private var runTime: Long = 0L
 
     var onServiceDisconnected: ((String) -> Unit)? = null
 
-    private fun handleServiceDisconnected(message: String) {
-        onServiceDisconnected?.let {
-            it(message)
-        }
-    }
-
-    fun bind() {
-        delegate.bind()
-    }
-
     fun unbind() {
-        delegate.unbind()
+        delegate?.unbind()
+        delegate = null
+        intent = null
     }
 
     suspend fun invokeAction(data: String, cb: ((result: String) -> Unit)?): Result<Unit> {
-        val res = mutableListOf<ByteArray>()
-        return delegate.useService {
-            it.invokeAction(
-                data, object : ICallbackInterface.Stub() {
-                    override fun onResult(
-                        result: ByteArray?, isSuccess: Boolean, ack: IAckInterface?
-                    ) {
-                        res.add(result ?: byteArrayOf())
-                        ack?.onAck()
-                        if (isSuccess) {
-                            cb?.let { cb ->
-                                cb(res.formatString())
-                            }
-                        }
-                    }
-                })
+        return runCatching {
+            Core.invokeAction(data) { result ->
+                cb?.invoke(result.orEmpty())
+            }
         }
     }
 
@@ -68,120 +42,77 @@ object Service {
         onStarted: (() -> Unit)?,
         onResult: ((result: String) -> Unit)?,
     ): Result<Unit> {
-        val res = mutableListOf<ByteArray>()
-        return delegate.useService {
-            it.quickSetup(
-                initParamsString,
-                setupParamsString,
-                object : ICallbackInterface.Stub() {
-                    override fun onResult(
-                        result: ByteArray?, isSuccess: Boolean, ack: IAckInterface?
-                    ) {
-                        res.add(result ?: byteArrayOf())
-                        ack?.onAck()
-                        if (isSuccess) {
-                            onResult?.let { cb ->
-                                cb(res.formatString())
-                            }
-                        }
-                    }
-                },
-                object : IVoidInterface.Stub() {
-                    override fun invoke() {
-                        onStarted?.let { onStarted ->
-                            onStarted()
-                        }
+        return runCatching {
+            Core.quickSetup(initParamsString, setupParamsString) { result ->
+                onResult?.invoke(result.orEmpty())
+            }
+            onStarted?.invoke()
+        }
+    }
+
+    suspend fun setEventListener(cb: ((result: String?) -> Unit)?): Result<Unit> {
+        return runCatching {
+            Core.callSetEventListener(cb)
+        }
+    }
+
+    suspend fun updateNotificationParams(params: NotificationParams): Result<Unit> {
+        State.notificationParamsFlow.emit(params)
+        return Result.success(Unit)
+    }
+
+    suspend fun setCrashlytics(enable: Boolean): Result<Unit> {
+        GlobalState.setCrashlytics(enable)
+        return Result.success(Unit)
+    }
+
+    suspend fun startService(options: VpnOptions, previousRunTime: Long): Long {
+        return runLock.withLock {
+            State.options = options
+            val nextIntent = when (options.enable) {
+                true -> VpnService::class.intent
+                false -> CommonService::class.intent
+            }
+            if (intent != nextIntent) {
+                unbind()
+                delegate = ServiceDelegate(nextIntent, ::handleServiceDisconnected) { binder ->
+                    when (binder) {
+                        is VpnService.LocalBinder -> binder.getService()
+                        is CommonService.LocalBinder -> binder.getService()
+                        else -> throw IllegalArgumentException("Invalid binder type")
                     }
                 }
-            )
-        }
-    }
-
-    suspend fun setEventListener(
-        cb: ((result: String?) -> Unit)?
-    ): Result<Unit> {
-        val results = HashMap<String, MutableList<ByteArray>>()
-        return delegate.useService {
-            it.setEventListener(
-                when (cb != null) {
-                    true -> object : IEventInterface.Stub() {
-                        override fun onEvent(
-                            id: String, data: ByteArray?, isSuccess: Boolean, ack: IAckInterface?
-                        ) {
-                            if (results[id] == null) {
-                                results[id] = mutableListOf()
-                            }
-                            results[id]?.add(data ?: byteArrayOf())
-                            ack?.onAck()
-                            if (isSuccess) {
-                                cb(results[id]?.formatString())
-                                results.remove(id)
-                            }
-                        }
-                    }
-
-                    false -> null
-                })
-        }
-    }
-
-    suspend fun updateNotificationParams(
-        params: NotificationParams
-    ): Result<Unit> {
-        return delegate.useService {
-            it.updateNotificationParams(params)
-        }
-    }
-
-    suspend fun setCrashlytics(
-        enable: Boolean
-    ): Result<Unit> {
-        return delegate.useService {
-            it.setCrashlytics(enable)
-        }
-    }
-
-    private suspend fun awaitIResultInterface(
-        block: (IResultInterface) -> Unit
-    ): Long = suspendCancellableCoroutine { continuation ->
-        val callback = object : IResultInterface.Stub() {
-            override fun onResult(time: Long) {
-                if (continuation.isActive) {
-                    continuation.resume(time)
-                }
+                intent = nextIntent
+                delegate?.bind()
             }
-        }
-
-        try {
-            block(callback)
-        } catch (e: Exception) {
-            GlobalState.log("awaitIResultInterface $e")
-            if (continuation.isActive) {
-                continuation.resumeWithException(e)
+            val result = delegate?.useService { service ->
+                service.start()
+            } ?: return@withLock 0L
+            if (result.isFailure) {
+                return@withLock 0L
             }
+            runTime = previousRunTime.takeIf { it != 0L } ?: System.currentTimeMillis()
+            runTime
         }
-    }
-
-
-    suspend fun startService(options: VpnOptions, runTime: Long): Long {
-        return delegate.useService {
-            awaitIResultInterface { callback ->
-                it.startService(options, runTime, callback)
-            }
-        }.getOrNull() ?: 0L
     }
 
     suspend fun stopService(): Long {
-        return delegate.useService {
-            awaitIResultInterface { callback ->
-                it.stopService(callback)
+        return runLock.withLock {
+            delegate?.useService { service ->
+                service.stop()
             }
-        }.getOrNull() ?: 0L
+            unbind()
+            runTime = 0L
+            runTime
+        }
     }
 
-    suspend fun getRunTime(): Long {
-        return delegate.useService {
-            it.runTime
-        }.getOrNull() ?: 0L
+    suspend fun getRunTime(): Long = runTime
+
+    private fun handleServiceDisconnected(message: String) {
+        GlobalState.log("Background service disconnected: $message")
+        unbind()
+        runTime = 0L
+        onServiceDisconnected?.invoke(message)
     }
 }

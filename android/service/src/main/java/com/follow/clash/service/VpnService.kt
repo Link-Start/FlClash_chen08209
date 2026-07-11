@@ -6,8 +6,6 @@ import android.net.ProxyInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.os.Parcel
-import android.os.RemoteException
 import android.util.Log
 import androidx.core.content.getSystemService
 import com.follow.clash.common.AccessControlMode

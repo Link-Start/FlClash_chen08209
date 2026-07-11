@@ -51,7 +51,6 @@ object State {
     suspend fun handleSyncState() {
         runLock.withLock {
             try {
-                Service.bind()
                 runTime = Service.getRunTime()
                 val runState = when (runTime == 0L) {
                     true -> RunState.STOP
@@ -128,7 +127,6 @@ object State {
     }
 
     private suspend fun setupAndStart() {
-        Service.bind()
         syncState()
         GlobalState.application.showToast(sharedState.startTip)
         val initParams = mutableMapOf<String, Any>()
@@ -200,6 +198,5 @@ object State {
         }
     }
 }
-
 
 

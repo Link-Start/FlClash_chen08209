@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.withContext
-import java.nio.charset.Charset
 import kotlin.reflect.KClass
 
 //fun Context.startForegroundServiceCompat(intent: Intent?) {
@@ -216,35 +215,3 @@ val Long.formatBytes: String
             "%.1f${units[unitIndex]}".format(size)
         }
     }
-
-fun String.chunkedForAidl(charset: Charset = Charsets.UTF_8): List<ByteArray> {
-    val allBytes = toByteArray(charset)
-    val total = allBytes.size
-    val maxBytes = when {
-        total <= 100 * 1024 -> total
-        total <= 1024 * 1024 -> 64 * 1024
-        total <= 10 * 1024 * 1024 -> 128 * 1024
-        else -> 256 * 1024
-    }
-
-    val result = mutableListOf<ByteArray>()
-    var index = 0
-    while (index < total) {
-        val end = minOf(index + maxBytes, total)
-        result.add(allBytes.copyOfRange(index, end))
-        index = end
-    }
-    return result
-}
-
-
-fun <T : List<ByteArray>> T.formatString(charset: Charset = Charsets.UTF_8): String {
-    val totalSize = this.sumOf { it.size }
-    val combined = ByteArray(totalSize)
-    var offset = 0
-    forEach { byteArray ->
-        byteArray.copyInto(combined, offset)
-        offset += byteArray.size
-    }
-    return String(combined, charset)
-}
