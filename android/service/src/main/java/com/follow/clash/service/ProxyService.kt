@@ -7,17 +7,18 @@ import android.os.IBinder
 import com.follow.clash.core.Core
 import com.follow.clash.service.modules.ServiceModules
 
-class CommonService : Service(), IBaseService {
+class ProxyService : Service(), ManagedService {
     private val modules = ServiceModules(this)
+    private val binder = LocalBinder()
 
     override fun onCreate() {
         super.onCreate()
-        handleCreate()
+        notifyCreated()
     }
 
     override fun onDestroy() {
         modules.stop()
-        handleDestroy()
+        notifyDestroyed()
         super.onDestroy()
     }
 
@@ -26,21 +27,19 @@ class CommonService : Service(), IBaseService {
         super.onLowMemory()
     }
 
-    private val binder = LocalBinder()
-
     inner class LocalBinder : Binder() {
-        fun getService(): CommonService = this@CommonService
+        val service: ProxyService
+            get() = this@ProxyService
     }
 
-    override fun onBind(intent: Intent): IBinder {
-        return binder
-    }
+    override fun onBind(intent: Intent): IBinder = binder
 
     override fun start() {
         try {
             modules.start()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             stop()
+            throw error
         }
     }
 

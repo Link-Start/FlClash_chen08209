@@ -4,14 +4,14 @@ import com.follow.clash.common.BroadcastAction
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.sendBroadcast
 
-interface IBaseService {
-    fun handleCreate() {
-        GlobalState.log("Service create")
+interface ManagedService {
+    fun notifyCreated() {
+        GlobalState.log("Service created")
         BroadcastAction.SERVICE_CREATED.sendBroadcast()
     }
 
-    fun handleDestroy() {
-        GlobalState.log("Service destroy")
+    fun notifyDestroyed() {
+        GlobalState.log("Service destroyed")
         BroadcastAction.SERVICE_DESTROYED.sendBroadcast()
     }
 

@@ -19,7 +19,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.RemoteException
 import android.util.Log
 import androidx.core.content.getSystemService
 import kotlinx.coroutines.Dispatchers
@@ -30,14 +29,6 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
-
-//fun Context.startForegroundServiceCompat(intent: Intent?) {
-//    if (Build.VERSION.SDK_INT >= 26) {
-//        startForegroundService(intent)
-//    } else {
-//        startService(intent)
-//    }
-//}
 
 val KClass<*>.intent: Intent
     get() = Intent(GlobalState.application, this.java)
@@ -52,57 +43,46 @@ fun Service.startForegroundCompat(id: Int, notification: Notification) {
 
 val ComponentName.intent: Intent
     get() = Intent().apply {
-        setComponent(this@intent)
-        setPackage(GlobalState.packageName)
+        component = this@intent
     }
 
 val QuickAction.action: String
     get() = "${GlobalState.application.packageName}.action.${this.name}"
 
 val QuickAction.quickIntent: Intent
-    get() = Components.TEMP_ACTIVITY.intent.apply {
+    get() = Components.quickActionActivity.intent.apply {
         action = this@quickIntent.action
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
 val BroadcastAction.action: String
     get() = "${GlobalState.application.packageName}.intent.action.${this.name}"
 
 val Context.processName: String?
-    get() {
-        val pid = android.os.Process.myPid()
-        val activityManager = getSystemService<ActivityManager>()
-        activityManager?.runningAppProcesses?.find { it.pid == pid }?.let {
-            return it.processName
-        }
-        return null
-    }
-
-val BroadcastAction.quickIntent: Intent
-    get() = Components.BROADCAST_RECEIVER.intent.apply {
-        action = this@quickIntent.action
-    }
+    get() = getSystemService<ActivityManager>()
+        ?.runningAppProcesses
+        ?.firstOrNull { it.pid == android.os.Process.myPid() }
+        ?.processName
 
 fun BroadcastAction.sendBroadcast() {
-    val intent = Intent().apply {
-        action = this@sendBroadcast.action
-        Log.d("[sendBroadcast]", "$action")
-        setPackage(GlobalState.packageName)
+    val broadcastAction = action
+    val intent = Intent(broadcastAction).apply {
+        component = Components.serviceBroadcastReceiver
     }
+    GlobalState.log("Send broadcast: $broadcastAction")
     GlobalState.application.sendBroadcast(
-        intent, GlobalState.RECEIVE_BROADCASTS_PERMISSIONS
+        intent,
+        GlobalState.receiveBroadcastPermission,
     )
 }
-
 
 val Intent.toPendingIntent: PendingIntent
     get() = PendingIntent.getActivity(
         GlobalState.application,
         0,
         this,
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
-
 
 fun Service.startForeground(notification: Notification) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -111,8 +91,8 @@ fun Service.startForeground(notification: Notification) {
         if (channel == null) {
             channel = NotificationChannel(
                 GlobalState.NOTIFICATION_CHANNEL,
-                "SERVICE_CHANNEL",
-                NotificationManager.IMPORTANCE_LOW
+                getString(R.string.service_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
             )
             manager?.createNotificationChannel(channel)
         }
@@ -144,33 +124,24 @@ fun Context.receiveBroadcastFlow(
     awaitClose { unregisterReceiver(receiver) }
 }
 
-
-inline fun <reified T : IBinder> Context.bindServiceFlow(
+fun Context.bindServiceFlow(
     intent: Intent,
     flags: Int = Context.BIND_AUTO_CREATE,
     maxRetries: Int = 10,
-    retryDelayMillis: Long = 200L
+    retryDelayMillis: Long = 200L,
 ): Flow<Pair<IBinder?, String>> = callbackFlow {
     val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            if (binder != null) {
-                try {
-                    @Suppress("UNCHECKED_CAST") val casted = binder as? T
-                    if (casted != null) {
-                        trySend(Pair(casted, ""))
-                    } else {
-                        trySend(Pair(null, "Binder is not of type ${T::class.java}"))
-                    }
-                } catch (e: RemoteException) {
-                    trySend(Pair(null, "Failed to link to death: ${e.message}"))
-                }
+            val message = if (binder == null) {
+                "Binder is empty"
             } else {
-                trySend(Pair(null, "Binder empty"))
+                ""
             }
+            trySend(binder to message)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            trySend(Pair(null, "Service disconnected"))
+            trySend(null to "Service disconnected")
         }
     }
 
@@ -185,7 +156,6 @@ inline fun <reified T : IBinder> Context.bindServiceFlow(
     awaitClose {
         Handler(Looper.getMainLooper()).post {
             unbindService(connection)
-            trySend(Pair(null, ""))
         }
     }
 }.retryWhen { cause, attempt ->
@@ -197,21 +167,18 @@ inline fun <reified T : IBinder> Context.bindServiceFlow(
     }
 }
 
-
 val Long.formatBytes: String
     get() {
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        var size = this.toDouble()
-        var unitIndex = 0
-
-        while (size >= 1024 && unitIndex < units.size - 1) {
-            size /= 1024
-            unitIndex++
+        var value = toDouble()
+        var unit = 0
+        while (value >= 1024 && unit < units.lastIndex) {
+            value /= 1024
+            unit++
         }
-
-        return if (unitIndex == 0) {
-            "${size.toLong()}${units[unitIndex]}"
+        return if (unit == 0) {
+            "${value.toLong()}${units[unit]}"
         } else {
-            "%.1f${units[unitIndex]}".format(size)
+            "%.1f${units[unit]}".format(value)
         }
     }

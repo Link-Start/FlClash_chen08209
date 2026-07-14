@@ -11,30 +11,18 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 
-
 internal class SuspendModule(
     private val service: Service,
     private val scope: CoroutineScope,
 ) : ServiceModule {
-    private fun isScreenOn(): Boolean {
-        val pm = service.getSystemService<PowerManager>()
-        return when (pm != null) {
-            true -> pm.isInteractive
-            false -> true
-        }
-    }
+    private fun isScreenOn() =
+        service.getSystemService<PowerManager>()?.isInteractive ?: true
 
-    val isDeviceIdleMode: Boolean
-        get() {
-            return service.getSystemService<PowerManager>()?.isDeviceIdleMode ?: true
-        }
+    private val isDeviceIdle: Boolean
+        get() = service.getSystemService<PowerManager>()?.isDeviceIdleMode ?: true
 
-    private fun onUpdate(isScreenOn: Boolean) {
-        if (isScreenOn) {
-            Core.suspended(false)
-            return
-        }
-        Core.suspended(isDeviceIdleMode)
+    private fun updateSuspension(screenOn: Boolean) {
+        Core.suspended(!screenOn && isDeviceIdle)
     }
 
     override fun start() {
@@ -42,15 +30,14 @@ internal class SuspendModule(
             val screenFlow = service.receiveBroadcastFlow {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_SCREEN_OFF)
-            }.map { intent ->
-                intent.action == Intent.ACTION_SCREEN_ON
+                addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+            }.map {
+                isScreenOn()
             }.onStart {
                 emit(isScreenOn())
             }
 
-            screenFlow.collect {
-                onUpdate(it)
-            }
+            screenFlow.collect(::updateSuspension)
         }
     }
 }

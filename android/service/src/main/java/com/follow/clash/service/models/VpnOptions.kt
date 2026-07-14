@@ -1,6 +1,8 @@
 package com.follow.clash.service.models
 
 import com.follow.clash.common.AccessControlMode
+import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 
 data class AccessControlProps(
@@ -28,54 +30,25 @@ data class CIDR(
     val prefixLength: Int,
 )
 
-fun VpnOptions.getIpv4RouteAddress(): List<CIDR> {
-    return routeAddress.filter {
-        it.isIpv4()
-    }.map {
-        it.toCIDR()
-    }
-}
+fun VpnOptions.getIpv4RouteAddress(): List<CIDR> = routeAddress
+    .map(String::toCIDR)
+    .filter { it.address is Inet4Address }
 
-fun VpnOptions.getIpv6RouteAddress(): List<CIDR> {
-    return routeAddress.filter {
-        it.isIpv6()
-    }.map {
-        it.toCIDR()
-    }
-}
-
-fun String.isIpv4(): Boolean {
-    val parts = split("/")
-    if (parts.size != 2) {
-        throw IllegalArgumentException("Invalid CIDR format")
-    }
-    val address = InetAddress.getByName(parts[0])
-    return address.address.size == 4
-}
-
-fun String.isIpv6(): Boolean {
-    val parts = split("/")
-    if (parts.size != 2) {
-        throw IllegalArgumentException("Invalid CIDR format")
-    }
-    val address = InetAddress.getByName(parts[0])
-    return address.address.size == 16
-}
+fun VpnOptions.getIpv6RouteAddress(): List<CIDR> = routeAddress
+    .map(String::toCIDR)
+    .filter { it.address is Inet6Address }
 
 fun String.toCIDR(): CIDR {
     val parts = split("/")
-    if (parts.size != 2) {
-        throw IllegalArgumentException("Invalid CIDR format")
-    }
+    require(parts.size == 2) { "Invalid CIDR format: $this" }
     val ipAddress = parts[0]
-    val prefixLength =
-        parts[1].toIntOrNull() ?: throw IllegalArgumentException("Invalid prefix length")
+    val prefixLength = parts[1].toIntOrNull()
+        ?: throw IllegalArgumentException("Invalid prefix length: ${parts[1]}")
 
     val address = InetAddress.getByName(ipAddress)
-
     val maxPrefix = if (address.address.size == 4) 32 else 128
-    if (prefixLength !in 0..maxPrefix) {
-        throw IllegalArgumentException("Invalid prefix length for IP version")
+    require(prefixLength in 0..maxPrefix) {
+        "Invalid prefix length $prefixLength for $ipAddress"
     }
 
     return CIDR(address, prefixLength)
