@@ -86,6 +86,14 @@ void main() {
       final result = await controller.isInit;
       expect(result, true);
     });
+
+    test('crash delegates to interface', () async {
+      when(() => mock.crash()).thenAnswer((_) async => true);
+
+      await controller.crash();
+
+      verify(() => mock.crash()).called(1);
+    });
   });
 
   group('config methods', () {

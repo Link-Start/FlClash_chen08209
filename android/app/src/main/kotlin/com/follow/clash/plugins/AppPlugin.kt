@@ -118,6 +118,10 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 result.success(openAppSettings())
             }
 
+            "didCrashOnPreviousExecution" -> {
+                result.success(GlobalState.didCrashOnPreviousExecution())
+            }
+
             else -> {
                 result.notImplemented()
             }

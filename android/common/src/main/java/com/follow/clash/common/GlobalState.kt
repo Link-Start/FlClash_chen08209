@@ -39,4 +39,9 @@ object GlobalState : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
             log("Crashlytics enabled for ${application.processName}")
         }
     }
+
+    fun didCrashOnPreviousExecution(): Boolean {
+        FirebaseApp.initializeApp(application)
+        return FirebaseCrashlytics.getInstance().didCrashOnPreviousExecution()
+    }
 }

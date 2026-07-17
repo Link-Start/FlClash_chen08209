@@ -40,7 +40,7 @@ class DeveloperView extends ConsumerWidget {
             }
           },
         ),
-        if (globalState.isPre)
+        if (globalState.canCrashCore)
           ListItem(
             title: Text(appLocalizations.crashTest),
             minVerticalPadding: 12,

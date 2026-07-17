@@ -82,6 +82,13 @@ func (response MethodResponse) notImplemented(method CoreMethod) {
 }
 
 func handleMethodCall(call *MethodCall, response MethodResponse) {
+	// The crash method is a developer-only fatal-path test. It must bypass the
+	// recovery below so the core process terminates; on Android this also
+	// terminates the in-process application.
+	if call.Method == crashMethod {
+		handleCrash()
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
@@ -261,9 +268,6 @@ func handleMethodCall(call *MethodCall, response MethodResponse) {
 		handleGetMemory(func(value uint64) {
 			response.success(value)
 		})
-		return
-	case crashMethod:
-		handleCrash()
 		return
 	case deleteFileMethod:
 		path := ""
