@@ -1,4 +1,4 @@
-package com.example.wifi_ssid
+package com.follow.clash.wifi_ssid
 
 import android.Manifest
 import android.app.Activity
@@ -20,6 +20,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener
 import java.util.concurrent.ConcurrentHashMap
 
 class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -28,11 +29,40 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private var activity: Activity? = null
     private var wifiManager: WifiManager? = null
     private var connectivityManager: ConnectivityManager? = null
+    private var activityBinding: ActivityPluginBinding? = null
     private var pendingPermissionResult: Result? = null
     private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private val wifiInfoByNetwork = ConcurrentHashMap<Network, WifiInfo>()
 
+    private val permissionResultListener = RequestPermissionsResultListener { requestCode, _, _ ->
+        if (requestCode != REQUEST_CODE_LOCATION) {
+            return@RequestPermissionsResultListener false
+        }
+        val result = pendingPermissionResult
+            ?: return@RequestPermissionsResultListener false
+        pendingPermissionResult = null
+        val currentActivity = activity
+        if (currentActivity == null) {
+            result.error(ERROR_UNAVAILABLE, "Activity not available", null)
+            return@RequestPermissionsResultListener true
+        }
+        val state = permissionState(currentActivity, afterRequest = true)
+        if (state == PERMISSION_GRANTED) {
+            refreshWifiNetworkCallback()
+        } else {
+            unregisterWifiNetworkCallback()
+        }
+        result.success(state)
+        true
+    }
+
     companion object {
+        private const val CHANNEL_NAME = "wifi_ssid"
+        private const val METHOD_GET_SSID = "getSsid"
+        private const val METHOD_CHECK_PERMISSION = "checkPermission"
+        private const val METHOD_REQUEST_PERMISSION = "requestPermission"
+        private const val ERROR_UNAVAILABLE = "UNAVAILABLE"
+        private const val ERROR_IN_PROGRESS = "IN_PROGRESS"
         private const val REQUEST_CODE_LOCATION = 1001
 
         // Values must match WifiSsidPermission enum index in Dart
@@ -43,44 +73,35 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
-        channel = MethodChannel(binding.binaryMessenger, "wifi_ssid")
+        channel = MethodChannel(binding.binaryMessenger, CHANNEL_NAME)
         channel.setMethodCallHandler(this)
         wifiManager = binding.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         connectivityManager = binding.applicationContext.getSystemService(
             Context.CONNECTIVITY_SERVICE,
         ) as? ConnectivityManager
-        registerWifiNetworkCallback()
+        if (permissionState(binding.applicationContext) == PERMISSION_GRANTED) {
+            registerWifiNetworkCallback()
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         unregisterWifiNetworkCallback()
+        detachFromActivity(cancelPermissionRequest = true)
         context = null
         wifiManager = null
         connectivityManager = null
-        pendingPermissionResult = null
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityBinding?.removeRequestPermissionsResultListener(permissionResultListener)
+        activityBinding = binding
         activity = binding.activity
-        binding.addRequestPermissionsResultListener { requestCode, _, grantResults ->
-            if (requestCode != REQUEST_CODE_LOCATION) {
-                return@addRequestPermissionsResultListener false
-            }
-            val result = pendingPermissionResult
-                ?: return@addRequestPermissionsResultListener false
-            pendingPermissionResult = null
-            val state = permissionState(binding.activity, afterRequest = true)
-            if (state == PERMISSION_GRANTED) {
-                refreshWifiNetworkCallback()
-            }
-            result.success(state)
-            true
-        }
+        binding.addRequestPermissionsResultListener(permissionResultListener)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        activity = null
+        detachFromActivity(cancelPermissionRequest = false)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -88,45 +109,48 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     override fun onDetachedFromActivity() {
-        activity = null
+        detachFromActivity(cancelPermissionRequest = true)
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
-            "getSsid" -> getSsid(result)
-            "checkPermission" -> checkPermission(result)
-            "requestPermission" -> requestPermission(result)
+            METHOD_GET_SSID -> getSsid(result)
+            METHOD_CHECK_PERMISSION -> checkPermission(result)
+            METHOD_REQUEST_PERMISSION -> requestPermission(result)
             else -> result.notImplemented()
         }
     }
 
     private fun checkPermission(result: Result) {
         val ctx = context ?: run {
-            result.error("UNAVAILABLE", "Context not available", null)
+            result.error(ERROR_UNAVAILABLE, "Context not available", null)
             return
         }
         val state = permissionState(ctx)
         if (state == PERMISSION_GRANTED) {
             refreshWifiNetworkCallback()
+        } else {
+            unregisterWifiNetworkCallback()
         }
         result.success(state)
     }
 
     private fun requestPermission(result: Result) {
         val act = activity ?: run {
-            result.error("UNAVAILABLE", "Activity not available", null)
+            result.error(ERROR_UNAVAILABLE, "Activity not available", null)
             return
         }
         val ctx = context ?: run {
-            result.error("UNAVAILABLE", "Context not available", null)
+            result.error(ERROR_UNAVAILABLE, "Context not available", null)
             return
         }
         if (permissionState(ctx) == PERMISSION_GRANTED) {
+            refreshWifiNetworkCallback()
             result.success(PERMISSION_GRANTED)
             return
         }
         if (pendingPermissionResult != null) {
-            result.error("IN_PROGRESS", "A permission request is already active", null)
+            result.error(ERROR_IN_PROGRESS, "A permission request is already active", null)
             return
         }
         pendingPermissionResult = result
@@ -166,9 +190,10 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private fun getSsid(result: Result) {
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val cm = connectivityManager ?: run {
-                result.error("UNAVAILABLE", "ConnectivityManager not available", null)
+                result.error(ERROR_UNAVAILABLE, "ConnectivityManager not available", null)
                 return
             }
+            registerWifiNetworkCallback()
             val activeNetwork = cm.activeNetwork
             val activeInfo = activeNetwork?.let(wifiInfoByNetwork::get)
                 ?: activeNetwork
@@ -179,7 +204,7 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             activeInfo ?: wifiInfoByNetwork.values.firstOrNull()
         } else {
             val wm = wifiManager ?: run {
-                result.error("UNAVAILABLE", "WifiManager not available", null)
+                result.error(ERROR_UNAVAILABLE, "WifiManager not available", null)
                 return
             }
             @Suppress("DEPRECATION")
@@ -189,10 +214,9 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     private fun normalizeSsid(ssid: String?): String? {
-        return if (ssid == null || ssid == WifiManager.UNKNOWN_SSID || ssid == "0x") {
-            null
-        } else {
-            ssid.removeSurrounding("\"")
+        val normalized = ssid?.removeSurrounding("\"")
+        return normalized?.takeIf {
+            it.isNotEmpty() && it != WifiManager.UNKNOWN_SSID && it != "0x"
         }
     }
 
@@ -202,7 +226,15 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     private fun registerWifiNetworkCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || wifiNetworkCallback != null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return
+        }
+        val ctx = context ?: return
+        if (permissionState(ctx) != PERMISSION_GRANTED) {
+            unregisterWifiNetworkCallback()
+            return
+        }
+        if (wifiNetworkCallback != null) {
             return
         }
         val cm = connectivityManager ?: return
@@ -231,11 +263,29 @@ class WifiSsidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     private fun unregisterWifiNetworkCallback() {
-        val callback = wifiNetworkCallback ?: return
+        val callback = wifiNetworkCallback
         wifiNetworkCallback = null
-        connectivityManager?.let { manager ->
-            runCatching { manager.unregisterNetworkCallback(callback) }
+        if (callback != null) {
+            connectivityManager?.let { manager ->
+                runCatching { manager.unregisterNetworkCallback(callback) }
+            }
         }
         wifiInfoByNetwork.clear()
+    }
+
+    private fun detachFromActivity(cancelPermissionRequest: Boolean) {
+        activityBinding?.removeRequestPermissionsResultListener(permissionResultListener)
+        activityBinding = null
+        activity = null
+        if (cancelPermissionRequest) {
+            completePendingPermissionRequest(
+                "Activity detached before permission request completed",
+            )
+        }
+    }
+
+    private fun completePendingPermissionRequest(message: String) {
+        pendingPermissionResult?.error(ERROR_UNAVAILABLE, message, null)
+        pendingPermissionResult = null
     }
 }
