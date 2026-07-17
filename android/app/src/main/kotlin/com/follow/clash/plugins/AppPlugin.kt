@@ -102,7 +102,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
 
             "tip" -> {
                 val message = call.argument<String>("message")
-                tip(message)
+                GlobalState.application.showToast(message)
                 result.success(true)
             }
 
@@ -152,10 +152,6 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             GlobalState.application,
             listOf(shortcut),
         )
-    }
-
-    private fun tip(message: String?) {
-        GlobalState.application.showToast(message)
     }
 
     private fun isBatteryOptimizationDisabled(): Boolean {

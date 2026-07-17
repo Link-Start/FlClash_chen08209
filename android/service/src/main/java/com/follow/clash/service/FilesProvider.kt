@@ -32,7 +32,7 @@ class FilesProvider : DocumentsProvider() {
         projection: Array<String>?,
         sortOrder: String?,
     ): Cursor {
-        val result = MatrixCursor(resolveDocumentProjection(projection))
+        val result = MatrixCursor(projection ?: DEFAULT_DOCUMENT_COLUMNS)
         val parentFile = resolveFile(parentDocumentId)
         parentFile.listFiles()?.forEach { file ->
             includeFile(result, file)
@@ -41,7 +41,7 @@ class FilesProvider : DocumentsProvider() {
     }
 
     override fun queryDocument(documentId: String, projection: Array<String>?): Cursor {
-        val result = MatrixCursor(resolveDocumentProjection(projection))
+        val result = MatrixCursor(projection ?: DEFAULT_DOCUMENT_COLUMNS)
         includeFile(result, resolveFile(documentId))
         return result
     }
@@ -65,19 +65,15 @@ class FilesProvider : DocumentsProvider() {
             } else {
                 0
             }
+            val mimeType = if (file.isDirectory) {
+                DocumentsContract.Document.MIME_TYPE_DIR
+            } else {
+                "application/octet-stream"
+            }
             add(DocumentsContract.Document.COLUMN_FLAGS, flags)
-            add(DocumentsContract.Document.COLUMN_MIME_TYPE, getDocumentType(file))
+            add(DocumentsContract.Document.COLUMN_MIME_TYPE, mimeType)
         }
     }
-
-    private fun getDocumentType(file: File): String = if (file.isDirectory) {
-        DocumentsContract.Document.MIME_TYPE_DIR
-    } else {
-        "application/octet-stream"
-    }
-
-    private fun resolveDocumentProjection(projection: Array<String>?) =
-        projection ?: DEFAULT_DOCUMENT_COLUMNS
 
     private fun resolveFile(documentId: String): File {
         val root = context?.filesDir?.canonicalFile

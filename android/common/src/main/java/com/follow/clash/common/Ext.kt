@@ -13,33 +13,16 @@ import android.content.Context
 import android.content.Context.RECEIVER_NOT_EXPORTED
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.ServiceConnection
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
 import android.os.Build
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.util.Log
 import androidx.core.content.getSystemService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.retryWhen
-import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 
 val KClass<*>.intent: Intent
     get() = Intent(GlobalState.application, this.java)
-
-fun Service.startForegroundCompat(id: Int, notification: Notification) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        startForeground(id, notification, FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-    } else {
-        startForeground(id, notification)
-    }
-}
 
 val ComponentName.intent: Intent
     get() = Intent().apply {
@@ -97,7 +80,15 @@ fun Service.startForeground(notification: Notification) {
             manager?.createNotificationChannel(channel)
         }
     }
-    startForegroundCompat(GlobalState.NOTIFICATION_ID, notification)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        startForeground(
+            GlobalState.NOTIFICATION_ID,
+            notification,
+            FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+        )
+    } else {
+        startForeground(GlobalState.NOTIFICATION_ID, notification)
+    }
 }
 
 @SuppressLint("UnspecifiedRegisterReceiverFlag")
@@ -123,62 +114,3 @@ fun Context.receiveBroadcastFlow(
     registerReceiverCompat(receiver, filter)
     awaitClose { unregisterReceiver(receiver) }
 }
-
-fun Context.bindServiceFlow(
-    intent: Intent,
-    flags: Int = Context.BIND_AUTO_CREATE,
-    maxRetries: Int = 10,
-    retryDelayMillis: Long = 200L,
-): Flow<Pair<IBinder?, String>> = callbackFlow {
-    val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            val message = if (binder == null) {
-                "Binder is empty"
-            } else {
-                ""
-            }
-            trySend(binder to message)
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            trySend(null to "Service disconnected")
-        }
-    }
-
-    val success = withContext(Dispatchers.Main) {
-        bindService(intent, connection, flags)
-    }
-
-    if (!success) {
-        throw IllegalStateException("bindService() failed, will retry")
-    }
-
-    awaitClose {
-        Handler(Looper.getMainLooper()).post {
-            unbindService(connection)
-        }
-    }
-}.retryWhen { cause, attempt ->
-    if (attempt < maxRetries && cause is Exception) {
-        delay(retryDelayMillis)
-        true
-    } else {
-        false
-    }
-}
-
-val Long.formatBytes: String
-    get() {
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        var value = toDouble()
-        var unit = 0
-        while (value >= 1024 && unit < units.lastIndex) {
-            value /= 1024
-            unit++
-        }
-        return if (unit == 0) {
-            "${value.toLong()}${units[unit]}"
-        } else {
-            "%.1f${units[unit]}".format(value)
-        }
-    }

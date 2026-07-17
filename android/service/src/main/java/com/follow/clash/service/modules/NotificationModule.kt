@@ -14,7 +14,6 @@ import com.follow.clash.common.QuickAction
 import com.follow.clash.common.quickIntent
 import com.follow.clash.common.receiveBroadcastFlow
 import com.follow.clash.common.startForeground
-import com.follow.clash.common.tickerFlow
 import com.follow.clash.common.toPendingIntent
 import com.follow.clash.core.Core
 import com.follow.clash.service.R
@@ -22,9 +21,11 @@ import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.getSpeedTrafficText
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -32,7 +33,6 @@ import kotlinx.coroutines.launch
 private data class ExtendedNotificationParams(
     val title: String,
     val stopText: String,
-    val onlyStatisticsProxy: Boolean,
     val contentText: String,
 )
 
@@ -40,7 +40,6 @@ private val NotificationParams.extended: ExtendedNotificationParams
     get() = ExtendedNotificationParams(
         title,
         stopText,
-        onlyStatisticsProxy,
         Core.getSpeedTrafficText(onlyStatisticsProxy),
     )
 
@@ -61,11 +60,16 @@ internal class NotificationModule(
             }
 
             combine(
-                tickerFlow(1_000),
+                flow {
+                    while (true) {
+                        delay(1_000)
+                        emit(Unit)
+                    }
+                },
                 ServiceConfig.notificationParams,
                 screenFlow,
             ) { _, params, screenOn ->
-                params.extended.takeIf { screenOn }
+                params.takeIf { screenOn }?.extended
             }.filterNotNull()
                 .distinctUntilChanged()
                 .collect(::update)

@@ -5,6 +5,7 @@ import com.follow.clash.common.GlobalState
 import com.follow.clash.models.SharedState
 import com.follow.clash.plugins.AppPlugin
 import com.follow.clash.plugins.TilePlugin
+import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
 import com.google.gson.Gson
@@ -64,7 +65,7 @@ object ServiceState {
             return@withLock
         }
         runTimeMillis = ServiceController.getRunTimeMillis()
-        updateRunState(if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED)
+        mutableRunState.value = if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED
     }
 
     suspend fun handleStartAction() {
@@ -107,7 +108,7 @@ object ServiceState {
         launchStop()
     }
 
-    suspend fun syncSharedState(state: SharedState) {
+    fun syncSharedState(state: SharedState) {
         sharedState = state
         applySharedState()
     }
@@ -116,7 +117,7 @@ object ServiceState {
         GlobalState.launch {
             lock.withLock {
                 runTimeMillis = 0L
-                updateRunState(RunState.STOPPED)
+                mutableRunState.value = RunState.STOPPED
             }
         }
     }
@@ -128,9 +129,9 @@ object ServiceState {
         }
     }
 
-    private suspend fun applySharedState() {
+    private fun applySharedState() {
         GlobalState.setCrashlytics(sharedState.crashlytics)
-        ServiceController.updateNotification(
+        ServiceConfig.updateNotificationParams(
             NotificationParams(
                 title = sharedState.currentProfileName,
                 stopText = sharedState.stopText,
@@ -139,7 +140,7 @@ object ServiceState {
         )
     }
 
-    private suspend fun setupAndStart() {
+    private fun setupAndStart() {
         applySharedState()
         GlobalState.application.showToast(sharedState.startTip)
         val initParams = Gson().toJson(
@@ -170,7 +171,7 @@ object ServiceState {
                     return@launch
                 }
                 val value = sharedState.vpnOptions ?: return@launch
-                updateRunState(RunState.STARTING)
+                mutableRunState.value = RunState.STARTING
                 value
             }
 
@@ -201,9 +202,8 @@ object ServiceState {
                     return@withLock
                 }
                 runTimeMillis = ServiceController.start(options, runTimeMillis)
-                updateRunState(
-                    if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED,
-                )
+                mutableRunState.value =
+                    if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED
             }
         }
     }
@@ -212,7 +212,7 @@ object ServiceState {
         GlobalState.launch {
             lock.withLock {
                 if (runState.value == RunState.STARTING) {
-                    updateRunState(RunState.STOPPED)
+                    mutableRunState.value = RunState.STOPPED
                 }
             }
         }
@@ -224,14 +224,10 @@ object ServiceState {
                 if (runState.value != RunState.STARTED) {
                     return@withLock
                 }
-                updateRunState(RunState.STOPPING)
+                mutableRunState.value = RunState.STOPPING
                 runTimeMillis = ServiceController.stop()
-                updateRunState(RunState.STOPPED)
+                mutableRunState.value = RunState.STOPPED
             }
         }
-    }
-
-    private fun updateRunState(value: RunState) {
-        mutableRunState.value = value
     }
 }

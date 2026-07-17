@@ -14,13 +14,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
     private lateinit var scope: CoroutineScope
-    private val eventSemaphore = Semaphore(10)
     private val gson = Gson()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -57,8 +54,10 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun shutdown(result: MethodChannel.Result) {
-        ServiceController.unbind()
-        result.success(true)
+        scope.launch {
+            ServiceController.unbind()
+            result.success(true)
+        }
     }
 
     private fun invokeAction(call: MethodCall, result: MethodChannel.Result) {
@@ -110,9 +109,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private fun sendEvent(value: String?) {
         scope.launch(Dispatchers.Main) {
-            eventSemaphore.withPermit {
-                channel.invokeMethod("event", value)
-            }
+            channel.invokeMethod("event", value)
         }
     }
 

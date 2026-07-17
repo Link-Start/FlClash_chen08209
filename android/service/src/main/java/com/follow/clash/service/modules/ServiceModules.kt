@@ -9,7 +9,7 @@ import kotlinx.coroutines.cancel
 internal interface ServiceModule {
     fun start()
 
-    fun stop() = Unit
+    fun stop()
 }
 
 internal class ServiceModules(private val service: Service) {

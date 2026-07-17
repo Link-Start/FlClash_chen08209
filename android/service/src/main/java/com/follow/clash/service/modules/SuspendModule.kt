@@ -40,4 +40,8 @@ internal class SuspendModule(
             screenFlow.collect(::updateSuspension)
         }
     }
+
+    override fun stop() {
+        Core.suspended(false)
+    }
 }

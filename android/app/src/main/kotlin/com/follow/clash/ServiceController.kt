@@ -1,23 +1,33 @@
 package com.follow.clash
 
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
 import com.follow.clash.common.GlobalState
-import com.follow.clash.common.ServiceDelegate
 import com.follow.clash.common.intent
 import com.follow.clash.core.Core
 import com.follow.clash.service.ManagedService
 import com.follow.clash.service.ProxyService
 import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.VpnService
-import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 object ServiceController {
     private val lock = Mutex()
-    private var delegate: ServiceDelegate<ManagedService>? = null
-    private var boundIntent: Intent? = null
+    private var binding: ManagedServiceBinding? = null
     @Volatile
     private var runTimeMillis = 0L
     @Volatile
@@ -27,10 +37,13 @@ object ServiceController {
         serviceDisconnectedListener = listener
     }
 
-    fun unbind() {
-        delegate?.unbind()
-        delegate = null
-        boundIntent = null
+    suspend fun unbind() = lock.withLock {
+        clearBinding()
+    }
+
+    private fun clearBinding() {
+        binding?.unbind()
+        binding = null
     }
 
     fun invokeAction(data: String, callback: ((String) -> Unit)?): Result<Unit> = runCatching {
@@ -55,10 +68,6 @@ object ServiceController {
         Core.updateEventListener(callback)
     }
 
-    fun updateNotification(params: NotificationParams) {
-        ServiceConfig.updateNotificationParams(params)
-    }
-
     suspend fun start(options: VpnOptions, previousRunTimeMillis: Long): Long = lock.withLock {
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = if (options.enable) {
@@ -67,24 +76,25 @@ object ServiceController {
             ProxyService::class.intent
         }
 
-        if (boundIntent?.component != nextIntent.component) {
-            unbind()
-            delegate = ServiceDelegate(nextIntent, ::handleServiceDisconnected) { binder ->
-                when (binder) {
-                    is VpnService.LocalBinder -> binder.service
-                    is ProxyService.LocalBinder -> binder.service
-                    else -> error("Unsupported service binder: ${binder.javaClass.name}")
-                }
+        if (binding?.component != nextIntent.component) {
+            clearBinding()
+            lateinit var nextBinding: ManagedServiceBinding
+            nextBinding = ManagedServiceBinding(nextIntent) { message ->
+                handleServiceDisconnected(nextBinding, message)
             }
-            boundIntent = nextIntent
-            delegate?.bind()
+            binding = nextBinding
+            nextBinding.bind().onFailure { error ->
+                GlobalState.log("Unable to bind background service: $error")
+                clearBinding()
+                return@withLock 0L
+            }
         }
 
-        val result = delegate?.useService { service -> service.start() }
-            ?: return@withLock 0L
+        val currentBinding = binding ?: return@withLock 0L
+        val result = currentBinding.useService { service -> service.start() }
         if (result.isFailure) {
             GlobalState.log("Unable to start background service: ${result.exceptionOrNull()}")
-            unbind()
+            clearBinding()
             return@withLock 0L
         }
 
@@ -94,21 +104,116 @@ object ServiceController {
     }
 
     suspend fun stop(): Long = lock.withLock {
-        delegate?.useService { service -> service.stop() }
+        binding?.useService { service -> service.stop() }
             ?.onFailure { error ->
                 GlobalState.log("Unable to stop background service: $error")
             }
-        unbind()
+        clearBinding()
         runTimeMillis = 0L
         runTimeMillis
     }
 
     fun getRunTimeMillis(): Long = runTimeMillis
 
-    private fun handleServiceDisconnected(message: String) {
-        GlobalState.log("Background service disconnected: $message")
-        unbind()
-        runTimeMillis = 0L
-        serviceDisconnectedListener?.invoke(message)
+    private fun handleServiceDisconnected(
+        disconnectedBinding: ManagedServiceBinding,
+        message: String,
+    ) {
+        GlobalState.launch {
+            val shouldNotify = lock.withLock {
+                if (binding !== disconnectedBinding) {
+                    return@withLock false
+                }
+                GlobalState.log("Background service disconnected: $message")
+                clearBinding()
+                runTimeMillis = 0L
+                true
+            }
+            if (shouldNotify) {
+                serviceDisconnectedListener?.invoke(message)
+            }
+        }
+    }
+}
+
+private class ManagedServiceBinding(
+    private val intent: Intent,
+    private val onDisconnected: (String) -> Unit,
+) : ServiceConnection {
+    val component: ComponentName?
+        get() = intent.component
+
+    private val serviceState = MutableStateFlow<Result<ManagedService>?>(null)
+
+    @Volatile
+    private var isBound = false
+
+    suspend fun bind(): Result<Unit> = runCatching {
+        withContext(Dispatchers.Main.immediate) {
+            serviceState.value = null
+            isBound = GlobalState.application.bindService(
+                intent,
+                this@ManagedServiceBinding,
+                Context.BIND_AUTO_CREATE,
+            )
+            check(isBound) { "bindService() failed" }
+        }
+    }
+
+    suspend fun <R> useService(
+        timeoutMillis: Long = 5_000,
+        block: suspend (ManagedService) -> R,
+    ): Result<R> = runCatching {
+        withTimeout(timeoutMillis) {
+            val service = serviceState.filterNotNull().first().getOrThrow()
+            withContext(Dispatchers.Default) {
+                block(service)
+            }
+        }
+    }
+
+    fun unbind() {
+        serviceState.value = null
+        if (!isBound) return
+        isBound = false
+        Handler(Looper.getMainLooper()).post {
+            runCatching {
+                GlobalState.application.unbindService(this)
+            }.onFailure { error ->
+                GlobalState.log("Unable to unbind background service: $error")
+            }
+        }
+    }
+
+    override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+        runCatching {
+            when (binder) {
+                is VpnService.LocalBinder -> binder.service
+                is ProxyService.LocalBinder -> binder.service
+                null -> error("Binder is empty")
+                else -> error("Unsupported service binder: ${binder.javaClass.name}")
+            }
+        }.onSuccess { service ->
+            serviceState.value = Result.success(service)
+        }.onFailure { error ->
+            disconnect(error.message.orEmpty())
+        }
+    }
+
+    override fun onServiceDisconnected(name: ComponentName?) {
+        disconnect("Service disconnected")
+    }
+
+    override fun onBindingDied(name: ComponentName?) {
+        disconnect("Service binding died")
+    }
+
+    override fun onNullBinding(name: ComponentName?) {
+        disconnect("Service returned an empty binder")
+    }
+
+    private fun disconnect(message: String) {
+        serviceState.value = Result.failure(IllegalStateException(message))
+        onDisconnected(message)
     }
 }

@@ -45,25 +45,21 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
         override fun onAvailable(network: Network) {
             networkInfos[network] = NetworkInfo()
             updateDns()
-            super.onAvailable(network)
         }
 
         override fun onLosing(network: Network, maxMsToLive: Int) {
             networkInfos[network]?.losingUntilMillis = System.currentTimeMillis() + maxMsToLive
             updateDns()
-            super.onLosing(network, maxMsToLive)
         }
 
         override fun onLost(network: Network) {
             networkInfos.remove(network)
             updateDns()
-            super.onLost(network)
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
             networkInfos[network]?.dnsList = linkProperties.dnsServers
             updateDns()
-            super.onLinkPropertiesChanged(network, linkProperties)
         }
     }
 
@@ -108,9 +104,12 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
 
     override fun stop() {
-        connectivity?.unregisterNetworkCallback(callback)
-        networkInfos.clear()
-        updateDns()
+        try {
+            connectivity?.unregisterNetworkCallback(callback)
+        } finally {
+            networkInfos.clear()
+            updateDns()
+        }
     }
 }
 

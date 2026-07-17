@@ -19,6 +19,7 @@ import com.follow.clash.service.models.getIpv6RouteAddress
 import com.follow.clash.service.models.toCIDR
 import com.follow.clash.service.modules.ServiceModules
 import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
 import android.net.VpnService as SystemVpnService
 
 class VpnService : SystemVpnService(), ManagedService {
@@ -39,7 +40,7 @@ class VpnService : SystemVpnService(), ManagedService {
     private val connectivity by lazy {
         getSystemService<ConnectivityManager>()
     }
-    private val uidPackageNameMap = mutableMapOf<Int, String>()
+    private val uidPackageNameMap = ConcurrentHashMap<Int, String>()
 
     private fun resolverProcess(
         protocol: Int,
@@ -55,13 +56,12 @@ class VpnService : SystemVpnService(), ManagedService {
         if (nextUid == -1) {
             return ""
         }
-        if (!uidPackageNameMap.containsKey(nextUid)) {
-            uidPackageNameMap[nextUid] = packageManager
+        return uidPackageNameMap.getOrPut(nextUid) {
+            packageManager
                 .getPackagesForUid(nextUid)
                 ?.firstOrNull()
                 .orEmpty()
         }
-        return uidPackageNameMap[nextUid].orEmpty()
     }
 
     private val VpnOptions.tunAddress
@@ -86,7 +86,6 @@ class VpnService : SystemVpnService(), ManagedService {
                 }
             }
         }
-
 
     override fun onLowMemory() {
         Core.forceGC()
