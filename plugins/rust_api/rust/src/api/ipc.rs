@@ -46,7 +46,9 @@ const MAX_PENDING_MESSAGES: usize = 8;
 const IO_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[cfg(windows)]
-const ERROR_NO_DATA: i32 = 232;
+const CLIENT_STREAM_NONBLOCKING: bool = false;
+#[cfg(not(windows))]
+const CLIENT_STREAM_NONBLOCKING: bool = true;
 
 fn make_frame(ty: u8, payload: &[u8]) -> Vec<u8> {
     let mut frame = Vec::with_capacity(1 + payload.len());
@@ -179,21 +181,6 @@ fn validate_frame_len(len: usize) -> io::Result<u32> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "IPC frame is too large"))
 }
 
-fn is_retryable_read_error(error: &io::Error) -> bool {
-    if error.kind() == io::ErrorKind::WouldBlock {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        // PIPE_NOWAIT reports an empty named pipe as ERROR_NO_DATA, which Rust classifies as
-        // BrokenPipe even though the peer is still connected.
-        if error.raw_os_error() == Some(ERROR_NO_DATA) {
-            return true;
-        }
-    }
-    false
-}
-
 fn write_all_interruptible(
     writer: &mut impl Write,
     mut data: &[u8],
@@ -247,7 +234,7 @@ impl FrameReader {
                     Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
                     Ok(read) => self.header_read += read,
                     Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(e) if is_retryable_read_error(&e) => return Ok(None),
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(None),
                     Err(e) => return Err(e),
                 }
                 if self.header_read < self.header.len() {
@@ -267,7 +254,7 @@ impl FrameReader {
                 Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
                 Ok(read) => self.payload_read += read,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) if is_retryable_read_error(&e) => return Ok(None),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(None),
                 Err(e) => return Err(e),
             }
             if self.payload_read == self.payload.len() {
@@ -351,7 +338,10 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
             }
         };
 
-        if let Err(e) = stream.set_nonblocking(true) {
+        // Keep Windows named-pipe clients in blocking mode, matching main. With PIPE_NOWAIT,
+        // ReadFileEx can surface an empty pipe as a zero-byte read, which is indistinguishable
+        // from EOF through std::io::Read and causes an immediate false disconnect.
+        if let Err(e) = stream.set_nonblocking(CLIENT_STREAM_NONBLOCKING) {
             report_error(&sink, format!("stream nonblocking error: {e}"));
             continue;
         }
@@ -407,6 +397,10 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
                 }
                 Ok(None) => thread::sleep(IO_POLL_INTERVAL),
                 Err(e) => {
+                    ipc_debug!(
+                        "[IPC] io_loop[{generation}]: read error: {e}, raw={:?}",
+                        e.raw_os_error()
+                    );
                     if !matches!(
                         e.kind(),
                         io::ErrorKind::UnexpectedEof
@@ -520,14 +514,5 @@ mod tests {
             io::ErrorKind::InvalidData
         );
         assert!(frame_reader.payload.is_empty());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_empty_nonblocking_pipe_is_retryable() {
-        let error = io::Error::from_raw_os_error(ERROR_NO_DATA);
-
-        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
-        assert!(is_retryable_read_error(&error));
     }
 }
