@@ -71,6 +71,7 @@ class CoreService extends CoreHandlerInterface {
 
   Future<void> _initServer() async {
     _transport.onDisconnect = () {
+      _clearCompleter();
       _handleInvokeCrashEvent();
       if (!_shutdownCompleter.isCompleted) {
         _shutdownCompleter.complete(true);
@@ -231,7 +232,7 @@ class CoreService extends CoreHandlerInterface {
       );
     } catch (_) {
       _responseCompleters.remove(id);
-      rethrow;
+      return null;
     }
     final result = await completer.future.withTimeout(
       timeout: timeout,

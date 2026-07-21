@@ -4,7 +4,7 @@ use flutter_rust_bridge::frb;
 use interprocess::local_socket::prelude::*;
 use interprocess::local_socket::{GenericFilePath, ListenerNonblockingMode, ListenerOptions};
 use std::io::{self, Read, Write};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -12,6 +12,13 @@ use std::time::Duration;
 
 #[cfg(unix)]
 use std::path::Path;
+#[cfg(windows)]
+use std::{
+    os::windows::io::{AsHandle, AsRawHandle},
+    ptr,
+};
+#[cfg(windows)]
+use windows_sys::Win32::System::Pipes::PeekNamedPipe;
 
 macro_rules! ipc_debug {
     ($($arg:tt)*) => {
@@ -21,8 +28,6 @@ macro_rules! ipc_debug {
 }
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
-static CONNECTED: AtomicBool = AtomicBool::new(false);
-static GENERATION: AtomicU64 = AtomicU64::new(0);
 static LIFECYCLE: Mutex<()> = Mutex::new(());
 
 struct ServerState {
@@ -45,10 +50,6 @@ const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 const MAX_PENDING_MESSAGES: usize = 8;
 const IO_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(50);
-#[cfg(windows)]
-const CLIENT_STREAM_NONBLOCKING: bool = false;
-#[cfg(not(windows))]
-const CLIENT_STREAM_NONBLOCKING: bool = true;
 
 fn make_frame(ty: u8, payload: &[u8]) -> Vec<u8> {
     let mut frame = Vec::with_capacity(1 + payload.len());
@@ -71,35 +72,23 @@ fn cleanup_socket(path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn is_current_gen(generation: u64) -> bool {
-    GENERATION.load(Ordering::SeqCst) == generation
-}
-
-fn server_active(generation: u64) -> bool {
-    RUNNING.load(Ordering::SeqCst) && is_current_gen(generation)
-}
-
-fn take_server_handle() -> Result<Option<thread::JoinHandle<()>>, String> {
-    let mut state = STATE.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
-    state.tx = None;
-    Ok(state.handle.take())
-}
-
-fn join_server(handle: Option<thread::JoinHandle<()>>) -> Result<(), String> {
-    if let Some(handle) = handle {
-        ipc_debug!("[IPC] joining server thread...");
-        handle
-            .join()
-            .map_err(|_| "IPC server thread panicked".to_owned())?;
-        ipc_debug!("[IPC] server thread joined");
-    }
-    Ok(())
+fn server_active() -> bool {
+    RUNNING.load(Ordering::SeqCst)
 }
 
 fn stop_server_thread() -> Result<(), String> {
     RUNNING.store(false, Ordering::SeqCst);
-    CONNECTED.store(false, Ordering::SeqCst);
-    join_server(take_server_handle()?)
+    let handle = {
+        let mut state = STATE.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        state.tx = None;
+        state.handle.take()
+    };
+    if let Some(handle) = handle {
+        handle
+            .join()
+            .map_err(|_| "IPC server thread panicked".to_owned())?;
+    }
+    Ok(())
 }
 
 #[frb]
@@ -107,8 +96,6 @@ pub fn restart_ipc_server(name: String, sink: StreamSink<Vec<u8>, SseCodec>) -> 
     let _lifecycle = LIFECYCLE
         .lock()
         .map_err(|e| format!("Lifecycle lock poisoned: {e}"))?;
-    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    ipc_debug!("[IPC] restart_ipc_server: gen={generation}, name={name}");
 
     stop_server_thread()?;
     cleanup_socket(&name).map_err(|e| format!("Failed to remove stale socket: {e}"))?;
@@ -116,7 +103,7 @@ pub fn restart_ipc_server(name: String, sink: StreamSink<Vec<u8>, SseCodec>) -> 
     RUNNING.store(true, Ordering::SeqCst);
     let handle = thread::Builder::new()
         .name("ipc-server".into())
-        .spawn(move || io_loop(name, sink, generation))
+        .spawn(move || io_loop(name, sink))
         .map_err(|e| {
             RUNNING.store(false, Ordering::SeqCst);
             format!("Failed to spawn IPC server thread: {e}")
@@ -132,36 +119,18 @@ pub fn stop_ipc_server() -> Result<(), String> {
     let _lifecycle = LIFECYCLE
         .lock()
         .map_err(|e| format!("Lifecycle lock poisoned: {e}"))?;
-    ipc_debug!(
-        "[IPC] stop_ipc_server: RUNNING={}",
-        RUNNING.load(Ordering::SeqCst)
-    );
     stop_server_thread()
-}
-
-#[frb]
-pub fn ipc_server_status() -> bool {
-    RUNNING.load(Ordering::SeqCst)
-}
-
-#[frb]
-pub fn is_ipc_connected() -> bool {
-    CONNECTED.load(Ordering::SeqCst)
 }
 
 #[frb]
 pub fn send_ipc_message(data: Vec<u8>) -> Result<(), String> {
     validate_frame_len(data.len()).map_err(|e| e.to_string())?;
-    if !CONNECTED.load(Ordering::SeqCst) {
-        return Err("IPC client is not connected".into());
-    }
-
     let tx = STATE
         .lock()
         .map_err(|e| format!("Lock poisoned: {e}"))?
         .tx
         .clone()
-        .ok_or("IPC server is not running")?;
+        .ok_or("IPC client is not connected")?;
 
     match tx.try_send(data) {
         Ok(()) => Ok(()),
@@ -181,20 +150,30 @@ fn validate_frame_len(len: usize) -> io::Result<u32> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "IPC frame is too large"))
 }
 
+#[cfg(any(windows, test))]
+fn normalize_windows_pipe_write(result: io::Result<usize>) -> io::Result<usize> {
+    match result {
+        Ok(0) => Err(io::ErrorKind::WouldBlock.into()),
+        result => result,
+    }
+}
+
 fn write_all_interruptible(
     writer: &mut impl Write,
     mut data: &[u8],
     connection_running: &AtomicBool,
-    generation: u64,
 ) -> io::Result<()> {
     while !data.is_empty() {
-        if !connection_running.load(Ordering::SeqCst) || !server_active(generation) {
+        if !connection_running.load(Ordering::SeqCst) || !server_active() {
             return Err(io::Error::new(
                 io::ErrorKind::Interrupted,
                 "IPC connection stopped",
             ));
         }
-        match writer.write(data) {
+        let result = writer.write(data);
+        #[cfg(windows)]
+        let result = normalize_windows_pipe_write(result);
+        match result {
             Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
             Ok(written) => data = &data[written..],
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -211,13 +190,13 @@ fn write_frame(
     writer: &mut impl Write,
     data: &[u8],
     connection_running: &AtomicBool,
-    generation: u64,
 ) -> io::Result<()> {
     let len = validate_frame_len(data.len())?;
-    write_all_interruptible(writer, &len.to_le_bytes(), connection_running, generation)?;
-    write_all_interruptible(writer, data, connection_running, generation)
+    write_all_interruptible(writer, &len.to_le_bytes(), connection_running)?;
+    write_all_interruptible(writer, data, connection_running)
 }
 
+#[frb(ignore)]
 #[derive(Default)]
 struct FrameReader {
     header: [u8; 4],
@@ -273,16 +252,52 @@ impl FrameReader {
     }
 }
 
+#[cfg(windows)]
+fn windows_pipe_bytes_available(
+    receiver: &interprocess::local_socket::RecvHalf,
+) -> io::Result<u32> {
+    let interprocess::local_socket::RecvHalf::NamedPipe(pipe) = receiver;
+    let mut available = 0_u32;
+    // SAFETY: `pipe` owns a live named-pipe handle for this receive half, and
+    // `available` is a valid output pointer. No input buffer is supplied.
+    let result = unsafe {
+        PeekNamedPipe(
+            pipe.as_handle().as_raw_handle(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            &mut available,
+            ptr::null_mut(),
+        )
+    };
+    if result == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(available)
+    }
+}
+
+#[cfg(windows)]
+struct WindowsPipeReader<'a> {
+    receiver: &'a mut interprocess::local_socket::RecvHalf,
+}
+
+#[cfg(windows)]
+impl Read for WindowsPipeReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if windows_pipe_bytes_available(self.receiver)? == 0 {
+            return Err(io::ErrorKind::WouldBlock.into());
+        }
+        self.receiver.read(buffer)
+    }
+}
+
 fn report_error(sink: &StreamSink<Vec<u8>, SseCodec>, message: impl AsRef<str>) {
     let _ = sink.add(make_frame(TYPE_ERROR, message.as_ref().as_bytes()));
 }
 
-fn finish_server(name: &str, generation: u64) {
-    if !is_current_gen(generation) {
-        return;
-    }
+fn finish_server(name: &str) {
     RUNNING.store(false, Ordering::SeqCst);
-    CONNECTED.store(false, Ordering::SeqCst);
     if let Ok(mut state) = STATE.lock() {
         state.tx = None;
     }
@@ -291,14 +306,12 @@ fn finish_server(name: &str, generation: u64) {
     }
 }
 
-fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
-    ipc_debug!("[IPC] io_loop[{generation}]: started");
-
+fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>) {
     let fs_name = match name.clone().to_fs_name::<GenericFilePath>() {
         Ok(name) => name,
         Err(e) => {
             report_error(&sink, format!("name error: {e}"));
-            finish_server(&name, generation);
+            finish_server(&name);
             return;
         }
     };
@@ -307,23 +320,23 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
         Ok(listener) => listener,
         Err(e) => {
             report_error(&sink, format!("bind error: {e}"));
-            finish_server(&name, generation);
+            finish_server(&name);
             return;
         }
     };
 
     if let Err(e) = listener.set_nonblocking(ListenerNonblockingMode::Accept) {
         report_error(&sink, format!("listener nonblocking error: {e}"));
-        finish_server(&name, generation);
+        finish_server(&name);
         return;
     }
 
     if sink.add(make_frame(TYPE_READY, &[])).is_err() {
-        finish_server(&name, generation);
+        finish_server(&name);
         return;
     }
 
-    while server_active(generation) {
+    while server_active() {
         let stream = match listener.accept() {
             Ok(stream) => stream,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -331,24 +344,21 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
                 continue;
             }
             Err(e) => {
-                if server_active(generation) {
+                if server_active() {
                     report_error(&sink, format!("accept error: {e}"));
                 }
                 break;
             }
         };
 
-        // Keep Windows named-pipe clients in blocking mode, matching main. With PIPE_NOWAIT,
-        // ReadFileEx can surface an empty pipe as a zero-byte read, which is indistinguishable
-        // from EOF through std::io::Read and causes an immediate false disconnect.
-        if let Err(e) = stream.set_nonblocking(CLIENT_STREAM_NONBLOCKING) {
+        if let Err(e) = stream.set_nonblocking(true) {
             report_error(&sink, format!("stream nonblocking error: {e}"));
             continue;
         }
 
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(MAX_PENDING_MESSAGES);
         match STATE.lock() {
-            Ok(mut state) if server_active(generation) => state.tx = Some(tx),
+            Ok(mut state) if server_active() => state.tx = Some(tx),
             Ok(_) => break,
             Err(e) => {
                 report_error(&sink, format!("state lock error: {e}"));
@@ -356,25 +366,21 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
             }
         }
 
-        CONNECTED.store(true, Ordering::SeqCst);
         if sink.add(make_frame(TYPE_CONNECTED, &[])).is_err() {
-            CONNECTED.store(false, Ordering::SeqCst);
             break;
         }
 
         let (mut receiver, mut sender) = stream.split();
         let connection_running = Arc::new(AtomicBool::new(true));
         let writer_running = Arc::clone(&connection_running);
-        let (error_tx, error_rx) = mpsc::channel::<String>();
-
         let writer = thread::spawn(move || {
-            while writer_running.load(Ordering::SeqCst) && server_active(generation) {
+            let mut error = None;
+            while writer_running.load(Ordering::SeqCst) && server_active() {
                 match rx.recv_timeout(IO_POLL_INTERVAL) {
                     Ok(data) => {
-                        if let Err(e) = write_frame(&mut sender, &data, &writer_running, generation)
-                        {
+                        if let Err(e) = write_frame(&mut sender, &data, &writer_running) {
                             if e.kind() != io::ErrorKind::Interrupted {
-                                let _ = error_tx.send(format!("write error: {e}"));
+                                error = Some(format!("write error: {e}"));
                             }
                             break;
                         }
@@ -384,12 +390,19 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
                 }
             }
             writer_running.store(false, Ordering::SeqCst);
-            CONNECTED.store(false, Ordering::SeqCst);
+            error
         });
 
         let mut frame_reader = FrameReader::default();
-        while connection_running.load(Ordering::SeqCst) && server_active(generation) {
-            match frame_reader.poll(&mut receiver) {
+        while connection_running.load(Ordering::SeqCst) && server_active() {
+            #[cfg(windows)]
+            let poll_result = frame_reader.poll(&mut WindowsPipeReader {
+                receiver: &mut receiver,
+            });
+            #[cfg(not(windows))]
+            let poll_result = frame_reader.poll(&mut receiver);
+
+            match poll_result {
                 Ok(Some(data)) => {
                     if sink.add(make_frame(TYPE_DATA, &data)).is_err() {
                         break;
@@ -397,16 +410,13 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
                 }
                 Ok(None) => thread::sleep(IO_POLL_INTERVAL),
                 Err(e) => {
-                    ipc_debug!(
-                        "[IPC] io_loop[{generation}]: read error: {e}, raw={:?}",
-                        e.raw_os_error()
-                    );
+                    ipc_debug!("[IPC] read error: {e}, raw={:?}", e.raw_os_error());
                     if !matches!(
                         e.kind(),
                         io::ErrorKind::UnexpectedEof
                             | io::ErrorKind::ConnectionReset
                             | io::ErrorKind::BrokenPipe
-                    ) && server_active(generation)
+                    ) && server_active()
                     {
                         report_error(&sink, format!("read error: {e}"));
                     }
@@ -416,22 +426,18 @@ fn io_loop(name: String, sink: StreamSink<Vec<u8>, SseCodec>, generation: u64) {
         }
 
         connection_running.store(false, Ordering::SeqCst);
-        CONNECTED.store(false, Ordering::SeqCst);
         if let Ok(mut state) = STATE.lock() {
             state.tx = None;
         }
-        let _ = writer.join();
-
-        if let Ok(message) = error_rx.try_recv() {
+        if let Ok(Some(message)) = writer.join() {
             report_error(&sink, message);
         }
-        if server_active(generation) && sink.add(make_frame(TYPE_DISCONNECTED, &[])).is_err() {
+        if server_active() && sink.add(make_frame(TYPE_DISCONNECTED, &[])).is_err() {
             break;
         }
     }
 
-    finish_server(&name, generation);
-    ipc_debug!("[IPC] io_loop[{generation}]: stopped");
+    finish_server(&name);
 }
 
 #[cfg(test)]
@@ -514,5 +520,20 @@ mod tests {
             io::ErrorKind::InvalidData
         );
         assert!(frame_reader.payload.is_empty());
+    }
+
+    #[test]
+    fn windows_zero_write_is_treated_as_pending() {
+        assert_eq!(
+            normalize_windows_pipe_write(Ok(0)).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock,
+        );
+        assert_eq!(normalize_windows_pipe_write(Ok(2)).unwrap(), 2);
+
+        let error = io::Error::from(io::ErrorKind::BrokenPipe);
+        assert_eq!(
+            normalize_windows_pipe_write(Err(error)).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe,
+        );
     }
 }
