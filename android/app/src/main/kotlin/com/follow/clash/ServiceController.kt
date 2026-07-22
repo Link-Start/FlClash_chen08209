@@ -24,6 +24,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 object ServiceController {
     private val lock = Mutex()
@@ -52,16 +54,15 @@ object ServiceController {
         }
     }
 
-    fun quickSetup(
+    suspend fun quickSetup(
         initParams: String,
         setupParams: String,
-        onStarted: (() -> Unit)?,
-        onResult: ((String) -> Unit)?,
-    ): Result<Unit> = runCatching {
-        Core.quickSetup(initParams, setupParams) { result ->
-            onResult?.invoke(result.orEmpty())
+    ): Result<String> = runCatching {
+        suspendCoroutine { continuation ->
+            Core.quickSetup(initParams, setupParams) { result ->
+                continuation.resume(result.orEmpty())
+            }
         }
-        onStarted?.invoke()
     }
 
     fun setEventListener(callback: ((String?) -> Unit)?): Result<Unit> = runCatching {

@@ -23,6 +23,11 @@ enum class RunState {
     STOPPED,
 }
 
+private const val MISSING_CONFIG_MESSAGE = "No configuration found."
+private const val INVALID_CONFIG_MESSAGE = "Invalid configuration."
+private const val VPN_PERMISSION_MESSAGE = "VPN permission required."
+private const val START_FAILED_MESSAGE = "Failed to start service."
+
 object ServiceState {
     private val lock = Mutex()
     private val mutableRunState = MutableStateFlow(RunState.STOPPED)
@@ -122,10 +127,14 @@ object ServiceState {
         }
     }
 
-    private fun loadPreferencesAndStart() {
-        GlobalState.launch {
-            sharedState = GlobalState.application.sharedState
-            setupAndStart()
+    private suspend fun loadPreferencesAndStart() {
+        sharedState = GlobalState.application.sharedState
+        if (sharedState.setupParams == null || sharedState.vpnOptions == null) {
+            GlobalState.application.showToast(MISSING_CONFIG_MESSAGE)
+            return
+        }
+        if (setupCore()) {
+            startInBackground()
         }
     }
 
@@ -140,7 +149,7 @@ object ServiceState {
         )
     }
 
-    private fun setupAndStart() {
+    private suspend fun setupCore(): Boolean {
         applySharedState()
         GlobalState.application.showToast(sharedState.startTip)
         val initParams = Gson().toJson(
@@ -150,30 +159,36 @@ object ServiceState {
             ),
         )
         val setupParams = Gson().toJson(sharedState.setupParams)
-        ServiceController.quickSetup(
+        return ServiceController.quickSetup(
             initParams,
             setupParams,
-            onStarted = ::launchStart,
-            onResult = { message ->
-                if (message.isNotEmpty()) {
-                    GlobalState.application.showToast(message)
+        ).fold(
+            onSuccess = { message ->
+                if (message.isEmpty()) {
+                    true
+                } else {
+                    GlobalState.log("Unable to set up core: $message")
+                    showConfigError(message)
+                    false
                 }
             },
-        ).onFailure { error ->
-            GlobalState.log("Unable to set up core: $error")
-        }
+            onFailure = { error ->
+                GlobalState.log("Unable to set up core: $error")
+                showConfigError(error.message)
+                false
+            },
+        )
+    }
+
+    private fun showConfigError(message: String?) {
+        GlobalState.application.showToast(
+            message?.takeIf { it.isNotBlank() } ?: INVALID_CONFIG_MESSAGE,
+        )
     }
 
     private fun launchStart() {
         GlobalState.launch {
-            val options = lock.withLock {
-                if (runState.value != RunState.STOPPED) {
-                    return@launch
-                }
-                val value = sharedState.vpnOptions ?: return@launch
-                mutableRunState.value = RunState.STARTING
-                value
-            }
+            val options = beginStart() ?: return@launch
 
             val plugin = appPlugin
             if (plugin != null) {
@@ -188,33 +203,59 @@ object ServiceState {
             }
 
             if (options.enable && VpnService.prepare(GlobalState.application) != null) {
-                cancelStart()
+                cancelStartNow()
                 return@launch
             }
-            completeStart(options)
+            completeStartNow(options)
         }
+    }
+
+    private suspend fun startInBackground() {
+        val options = beginStart() ?: return
+        if (options.enable && VpnService.prepare(GlobalState.application) != null) {
+            cancelStartNow()
+            GlobalState.application.showToast(VPN_PERMISSION_MESSAGE)
+            return
+        }
+        if (!completeStartNow(options)) {
+            GlobalState.application.showToast(START_FAILED_MESSAGE)
+        }
+    }
+
+    private suspend fun beginStart(): VpnOptions? = lock.withLock {
+        if (runState.value != RunState.STOPPED) {
+            return@withLock null
+        }
+        val value = sharedState.vpnOptions ?: return@withLock null
+        mutableRunState.value = RunState.STARTING
+        value
     }
 
     private fun completeStart(options: VpnOptions) {
         GlobalState.launch {
-            lock.withLock {
-                if (runState.value != RunState.STARTING) {
-                    return@withLock
-                }
-                runTimeMillis = ServiceController.start(options, runTimeMillis)
-                mutableRunState.value =
-                    if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED
-            }
+            completeStartNow(options)
         }
+    }
+
+    private suspend fun completeStartNow(options: VpnOptions): Boolean = lock.withLock {
+        if (runState.value != RunState.STARTING) {
+            return@withLock false
+        }
+        runTimeMillis = ServiceController.start(options, runTimeMillis)
+        mutableRunState.value =
+            if (runTimeMillis == 0L) RunState.STOPPED else RunState.STARTED
+        runTimeMillis != 0L
     }
 
     private fun cancelStart() {
         GlobalState.launch {
-            lock.withLock {
-                if (runState.value == RunState.STARTING) {
-                    mutableRunState.value = RunState.STOPPED
-                }
-            }
+            cancelStartNow()
+        }
+    }
+
+    private suspend fun cancelStartNow() = lock.withLock {
+        if (runState.value == RunState.STARTING) {
+            mutableRunState.value = RunState.STOPPED
         }
     }
 
