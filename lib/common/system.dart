@@ -76,17 +76,12 @@ class System {
     if (system.isAndroid) {
       return AuthorizeCode.error;
     }
+    if (system.isWindows) {
+      return await windows?.registerService() ?? AuthorizeCode.error;
+    }
     final isAdmin = await checkIsAdmin();
     if (isAdmin) {
       return AuthorizeCode.none;
-    }
-
-    if (system.isWindows) {
-      final result = await windows?.registerService();
-      if (result == true) {
-        return AuthorizeCode.success;
-      }
-      return AuthorizeCode.error;
     }
 
     if (system.isMacOS) {
@@ -207,38 +202,52 @@ class Windows {
     return true;
   }
 
-  Future<bool> registerService() async {
+  Future<AuthorizeCode> registerService() async {
     if (await request.pingHelper()) {
       commonPrint.log('helper service is ready');
-      return true;
+      return AuthorizeCode.none;
     }
 
     commonPrint.log(
       'helper service is unavailable, requesting elevated installation',
       logLevel: LogLevel.warning,
     );
-    await request.stopCoreByHelper();
     if (!runas(appPath.helperPath, 'install')) {
       commonPrint.log(
         'failed to launch elevated helper installation',
         logLevel: LogLevel.error,
       );
-      return false;
+      return AuthorizeCode.error;
     }
 
-    final isRunning = await retry(
-      task: request.pingHelper,
-      maxAttempts: 10,
-      retryIf: (isRunning) => !isRunning,
-      delay: const Duration(seconds: 1),
-    );
+    final isRunning = await _waitForHelperService();
     commonPrint.log(
       isRunning
           ? 'helper service installation completed'
           : 'helper service did not become ready after installation',
       logLevel: isRunning ? LogLevel.info : LogLevel.error,
     );
-    return isRunning;
+    return isRunning ? AuthorizeCode.success : AuthorizeCode.error;
+  }
+
+  Future<bool> _waitForHelperService() async {
+    const timeout = Duration(seconds: 6);
+    const interval = Duration(seconds: 1);
+    const maxAttempts = 6;
+    final stopwatch = Stopwatch()..start();
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final remaining = timeout - stopwatch.elapsed;
+      if (remaining <= Duration.zero) return false;
+      final isRunning = await request.pingHelper(
+        timeout: remaining,
+        logFailure: false,
+      );
+      if (isRunning) return true;
+      final delay = timeout - stopwatch.elapsed;
+      if (delay <= Duration.zero || attempt == maxAttempts - 1) return false;
+      await Future.delayed(delay < interval ? delay : interval);
+    }
+    return false;
   }
 
   Future<bool> registerTask(String appName) async {

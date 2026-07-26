@@ -145,34 +145,48 @@ class Request {
     return res;
   }
 
-  Future<bool> pingHelper() async {
+  Future<bool> pingHelper({Duration? timeout, bool logFailure = true}) async {
+    if (timeout != null && timeout <= Duration.zero) {
+      return false;
+    }
+    final cancelToken = CancelToken();
+    final timeoutTimer = timeout == null
+        ? null
+        : Timer(timeout, () {
+            cancelToken.cancel('helper ping deadline exceeded');
+          });
     try {
       final response = await dio.get(
         'http://$localhost:$helperPort/ping',
+        cancelToken: cancelToken,
         options: _helperRequestOptions(),
       );
       final helperPath = response.data;
       if (response.statusCode != HttpStatus.ok || helperPath is! String) {
-        commonPrint.log(
-          'helper ping returned invalid response',
-          logLevel: LogLevel.warning,
-        );
+        if (logFailure) {
+          commonPrint.log(
+            'helper ping returned invalid response',
+            logLevel: LogLevel.warning,
+          );
+        }
         return false;
       }
       final protocolVersion = response.headers.value(
         helperProtocolVersionHeader,
       );
       if (protocolVersion != helperProtocolVersion) {
-        commonPrint.log(
-          'helper protocol mismatch: $protocolVersion',
-          logLevel: LogLevel.warning,
-        );
+        if (logFailure) {
+          commonPrint.log(
+            'helper protocol mismatch: $protocolVersion',
+            logLevel: LogLevel.warning,
+          );
+        }
         return false;
       }
       final matches = p.Context(
         style: p.Style.windows,
       ).equals(helperPath.trim(), appPath.helperPath);
-      if (!matches) {
+      if (!matches && logFailure) {
         commonPrint.log(
           'helper executable path mismatch',
           logLevel: LogLevel.warning,
@@ -180,8 +194,15 @@ class Request {
       }
       return matches;
     } catch (error) {
-      commonPrint.log('helper ping failed: $error', logLevel: LogLevel.warning);
+      if (logFailure) {
+        commonPrint.log(
+          'helper ping failed: $error',
+          logLevel: LogLevel.warning,
+        );
+      }
       return false;
+    } finally {
+      timeoutTimer?.cancel();
     }
   }
 
@@ -229,7 +250,7 @@ class Request {
   Options _helperRequestOptions() {
     return Options(
       responseType: ResponseType.plain,
-      connectTimeout: const Duration(milliseconds: 500),
+      connectTimeout: const Duration(milliseconds: 300),
       receiveTimeout: const Duration(seconds: 2),
     );
   }
