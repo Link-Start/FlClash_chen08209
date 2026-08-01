@@ -21,6 +21,9 @@ Read these only when the task touches their area:
 
 ## Highest Priority Rules
 
+- When the user explicitly requests a scoped, low-risk change, inspect the relevant context and implement it directly.
+  Do not require brainstorming, design documents, implementation plans, multiple-option proposals, or repeated confirmation.
+  Ask only when material ambiguity, destructive impact, additional authority, or scope expansion could change the result.
 - Use `flutter test`, not `dart test`, because models pull in Flutter types.
 - Run code generation after modifying models, providers, or database schema.
 - Do not manually edit generated files.
