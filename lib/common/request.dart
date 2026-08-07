@@ -37,7 +37,7 @@ class Request {
       );
     } catch (e) {
       commonPrint.log(
-        'getFileResponseForUrl error ${e.toString()}',
+        'getFileResponseForUrl error ${compactError(e)}',
         logLevel: LogLevel.warning,
       );
       rethrow;
@@ -52,7 +52,7 @@ class Request {
       );
     } catch (e) {
       commonPrint.log(
-        'getTextResponseForUrl error ${e.toString()}',
+        'getTextResponseForUrl error ${compactError(e)}',
         logLevel: LogLevel.warning,
       );
       rethrow;
