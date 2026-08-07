@@ -172,7 +172,11 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       if (!mounted) {
         return;
       }
-      context.showSnackBar(e.toString());
+      final appLocalizations = context.appLocalizations;
+      context.showSnackBar(
+        networkErrorMessage(e, appLocalizations) ??
+            appLocalizations.unknownNetworkError,
+      );
     }
   }
 

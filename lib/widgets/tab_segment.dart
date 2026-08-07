@@ -175,13 +175,7 @@ class _SegmentSeparatorState extends State<_SegmentSeparator>
       animation: separatorOpacityController,
       child: const SizedBox(width: _kSeparatorWidth),
       builder: (BuildContext context, Widget? child) {
-        return Padding(
-          padding: _kSeparatorInset,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(color: Colors.transparent),
-            child: child,
-          ),
-        );
+        return Padding(padding: _kSeparatorInset, child: child);
       },
     );
   }

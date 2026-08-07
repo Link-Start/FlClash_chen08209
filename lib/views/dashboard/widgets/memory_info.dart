@@ -82,6 +82,12 @@ class _MemoryInfoState extends ConsumerState<MemoryInfo>
   }
 
   Future<void> _updateMemory(int generation) async {
+    if (!mounted ||
+        !_isForeground ||
+        !_isUpdating ||
+        generation != _updateGeneration) {
+      return;
+    }
     final memoryReader = widget.memoryReader;
     final memory = memoryReader != null
         ? await memoryReader()

@@ -48,14 +48,12 @@ class OverwriteNestedSheet<T> extends ConsumerStatefulWidget {
 class _OverwriteNestedSheetState<T>
     extends ConsumerState<OverwriteNestedSheet<T>> {
   final GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey();
-  late T _origin;
+  late final T _origin;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _origin = widget.currentOf(ref);
-    });
+    _origin = widget.currentOf(ref);
   }
 
   Future<void> _handleClose() async {

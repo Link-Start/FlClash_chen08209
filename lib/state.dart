@@ -162,12 +162,14 @@ class GlobalState {
       return await futureFunction();
     } catch (e, s) {
       commonPrint.log('$title ===> $e, $s', logLevel: LogLevel.warning);
+      final message =
+          networkErrorMessage(e, currentAppLocalizations) ?? e.toString();
       if (silence) {
-        showNotifier(e.toString());
+        showNotifier(message);
       } else {
         showMessage(
           title: title ?? currentAppLocalizations.tip,
-          message: TextSpan(text: e.toString()),
+          message: TextSpan(text: message),
         );
       }
       return null;

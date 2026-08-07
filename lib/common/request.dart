@@ -36,16 +36,11 @@ class Request {
         options: Options(responseType: ResponseType.bytes),
       );
     } catch (e) {
-      commonPrint.log('getFileResponseForUrl error ${e.toString()}');
-      if (e is DioException) {
-        if (e.type == DioExceptionType.unknown) {
-          throw currentAppLocalizations.unknownNetworkError;
-        } else if (e.type == DioExceptionType.badResponse) {
-          throw currentAppLocalizations.networkException;
-        }
-        rethrow;
-      }
-      throw currentAppLocalizations.unknownNetworkError;
+      commonPrint.log(
+        'getFileResponseForUrl error ${e.toString()}',
+        logLevel: LogLevel.warning,
+      );
+      rethrow;
     }
   }
 
@@ -56,16 +51,11 @@ class Request {
         options: Options(responseType: ResponseType.plain),
       );
     } catch (e) {
-      commonPrint.log('getTextResponseForUrl error ${e.toString()}');
-      if (e is DioException) {
-        if (e.type == DioExceptionType.unknown) {
-          throw currentAppLocalizations.unknownNetworkError;
-        } else if (e.type == DioExceptionType.badResponse) {
-          throw currentAppLocalizations.networkException;
-        }
-        rethrow;
-      }
-      throw currentAppLocalizations.unknownNetworkError;
+      commonPrint.log(
+        'getTextResponseForUrl error ${e.toString()}',
+        logLevel: LogLevel.warning,
+      );
+      rethrow;
     }
   }
 

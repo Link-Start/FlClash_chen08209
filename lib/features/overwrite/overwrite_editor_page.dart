@@ -65,7 +65,8 @@ class _OverwriteEditorPageState<T> extends ConsumerState<OverwriteEditorPage<T>>
     super.dispose();
   }
 
-  Set<dynamic> get _selected => ref.watch(itemsProvider(key));
+  Set<dynamic> get _selected =>
+      widget.selectionEnabled ? ref.watch(itemsProvider(key)) : const {};
 
   bool get _isEditing => widget.selectionEnabled && _selected.isNotEmpty;
 
