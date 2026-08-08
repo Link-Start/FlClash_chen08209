@@ -266,6 +266,32 @@ void main() {
       expect(coreAction.lifecycleRestartCount, 1);
       expect(setupAction.applyProfileCount, 2);
     });
+
+    test('surfaces a failed restart to its caller as a rejection', () async {
+      final container = ProviderContainer(
+        overrides: [
+          coreActionProvider.overrideWith(_TestCoreAction.new),
+          setupActionProvider.overrideWith(_TestSetupAction.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      final coreAction =
+          container.read(coreActionProvider.notifier) as _TestCoreAction;
+      final restartCompleter = Completer<CoreLifecycleResult>();
+      coreAction.restartCompleter = restartCompleter;
+
+      final restart = coreAction.restartCore();
+      restartCompleter.completeError(StateError('core is gone'));
+
+      await expectLater(restart, throwsA(isA<StateError>()));
+      expect(container.read(coreStatusProvider), CoreStatus.disconnected);
+
+      // The failed operation must not latch: a later restart still runs.
+      coreAction.restartCompleter = null;
+      await coreAction.restartCore();
+      expect(coreAction.lifecycleRestartCount, 2);
+      expect(container.read(coreStatusProvider), CoreStatus.connected);
+    });
   });
 
   group('SetupAction', () {
@@ -598,7 +624,7 @@ class _RestartRecordingCoreAction extends CoreAction {
   int restartCount = 0;
 
   @override
-  Future<void> restartCore([bool start = false]) async {
+  Future<void> restartCore() async {
     restartCount++;
   }
 }

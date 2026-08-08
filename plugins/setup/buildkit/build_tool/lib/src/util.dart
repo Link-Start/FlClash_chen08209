@@ -91,6 +91,8 @@ Future<String> calcSha256(String filePath) async {
   return hash.toString();
 }
 
+const coreManifestName = 'manifest.json';
+
 void writeCoreManifest({
   required String path,
   required String coreSha256,

@@ -225,7 +225,7 @@ class BuildWindowsCommand extends BuildCommand {
         _rootDir,
         config.outputDir,
         targets.first.platformDir,
-        'manifest.json',
+        coreManifestName,
       ),
       coreSha256: coreSha256,
     );

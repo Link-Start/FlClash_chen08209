@@ -54,7 +54,7 @@ final class WindowsHelperClient {
   final String Function() _expectedHelperPath;
   final Future<String> Function() _readCoreSha256;
   final String baseUrl;
-  Future<String>? _coreSha256Cache;
+  String? _coreSha256Cache;
 
   WindowsHelperClient({
     Dio? dio,
@@ -65,10 +65,23 @@ final class WindowsHelperClient {
        _expectedHelperPath = expectedHelperPath ?? _defaultHelperPath,
        _readCoreSha256 = readCoreSha256 ?? _readBundledCoreSha256;
 
-  // The bundled manifest.json is a fixed build artifact; read it once. An
-  // empty result means the manifest is unusable, so the Helper is skipped.
-  Future<String> _readCoreSha256Once() {
-    return _coreSha256Cache ??= _readCoreSha256();
+  // The bundled manifest.json is a fixed build artifact; a usable value is read
+  // once. An empty result means it is unusable now, so the Helper is skipped.
+  Future<String> _readCoreSha256Once() async {
+    final cached = _coreSha256Cache;
+    if (cached != null) {
+      return cached;
+    }
+    String coreSha256;
+    try {
+      coreSha256 = await _readCoreSha256();
+    } catch (_) {
+      coreSha256 = '';
+    }
+    if (coreSha256.isNotEmpty) {
+      _coreSha256Cache = coreSha256;
+    }
+    return coreSha256;
   }
 
   // The Helper protocol is loopback-only; never route it through a proxy.
@@ -102,11 +115,6 @@ final class WindowsHelperClient {
     if (timeout != null && timeout <= Duration.zero) {
       return WindowsHelperReadiness.notReady;
     }
-    final coreSha256 = await _readCoreSha256Once();
-    if (coreSha256.isEmpty) {
-      _logPingFailure('Core manifest is missing or invalid', logFailure);
-      return WindowsHelperReadiness.manifestMissing;
-    }
     final cancelToken = CancelToken();
     final timeoutTimer = timeout == null
         ? null
@@ -115,6 +123,11 @@ final class WindowsHelperClient {
             () => cancelToken.cancel('helper ping deadline exceeded'),
           );
     try {
+      final coreSha256 = await _readCoreSha256Once();
+      if (coreSha256.isEmpty) {
+        _logPingFailure('Core manifest is missing or invalid', logFailure);
+        return WindowsHelperReadiness.manifestMissing;
+      }
       final response = await _dio.get<Object?>(
         '$baseUrl/ping',
         queryParameters: {'coreSha256': coreSha256},
@@ -398,8 +411,9 @@ final class WindowsHelperLauncher implements CoreProcessLauncher {
   }
 }
 
-// The Helper only reports these codes before it spawns a Core, so no
-// Helper-managed Core is left behind and a direct launch is safe to retry.
+// The Helper reports these codes before it spawns a Core, and /start releases
+// the previously managed Core first, so no Helper-managed Core is left behind
+// and a direct launch is safe to retry.
 const _preSpawnHelperErrors = {'coreVerificationFailed', 'processLaunchFailed'};
 
 final class FallbackCoreLauncher implements CoreProcessLauncher {

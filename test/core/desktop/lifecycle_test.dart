@@ -143,6 +143,61 @@ void main() {
     await lifecycle.close();
   });
 
+  test('stop queued behind a failing start still runs', () async {
+    final transport = FakeDesktopCoreTransport();
+    final launcher = FakeLauncher(owner: CoreProcessOwner.direct, pid: 42)
+      ..startGate = Completer<void>()
+      ..startError = StateError('spawn failed');
+    final lifecycle = _createLifecycle(
+      transport: transport,
+      resolver: MutableLauncherResolver(launcher),
+    );
+
+    final start = lifecycle.start();
+    transport.ready();
+    await launcher.started;
+    final stop = lifecycle.stop();
+    launcher.startGate!.complete();
+
+    await expectLater(start, throwsA(isA<DesktopCoreFailure>()));
+    final stopResult = await stop;
+    expect(stopResult.outcome, CoreLifecycleOutcome.applied);
+    expect(lifecycle.state, isA<DesktopCoreIdle>());
+    await lifecycle.close();
+  });
+
+  test('stop queued behind a start that leaks a lease releases it', () async {
+    final transport = FakeDesktopCoreTransport();
+    final launcher = FakeLauncher(owner: CoreProcessOwner.direct, pid: 42);
+    launcher.lease.stopResult = const CoreProcessStopResult(
+      stopped: true,
+      exitConfirmed: false,
+    );
+    final lifecycle = _createLifecycle(
+      transport: transport,
+      resolver: MutableLauncherResolver(launcher),
+    );
+
+    final start = lifecycle.start();
+    transport.ready();
+    await launcher.started;
+    // A session mismatch forces `_startSession` to clean the lease, which
+    // cannot confirm the exit and parks it as `_unconfirmedLease`.
+    transport.connect(pid: 7, generation: 1);
+    final stop = lifecycle.stop();
+
+    await expectLater(start, throwsA(isA<DesktopCoreFailure>()));
+    launcher.lease.stopResult = const CoreProcessStopResult(
+      stopped: true,
+      exitConfirmed: true,
+    );
+    final stopResult = await stop;
+    expect(stopResult.outcome, CoreLifecycleOutcome.applied);
+    expect(launcher.lease.stopCount, greaterThanOrEqualTo(2));
+    expect(lifecycle.state, isA<DesktopCoreIdle>());
+    await lifecycle.close();
+  });
+
   test(
     'terminal close failure settles once instead of retrying forever',
     () async {

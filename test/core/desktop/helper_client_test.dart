@@ -391,19 +391,41 @@ void main() {
     expect(reads, 1);
   });
 
-  test('a missing manifest is read only once across probes', () async {
+  test('an unreadable manifest is retried on the next probe', () async {
     var reads = 0;
     final client = _client(
-      _ResponseAdapter((_) => throw StateError('ping should not be sent')),
+      _ResponseAdapter(
+        (_) => ResponseBody.fromString(
+          r'C:\Helper.exe',
+          HttpStatus.ok,
+          headers: {
+            helperProtocolVersionHeader: [helperProtocolVersion],
+            Headers.contentTypeHeader: ['text/plain'],
+          },
+        ),
+      ),
       readCoreSha256: () async {
         reads++;
-        return '';
+        return reads == 1 ? '' : _coreSha256;
       },
     );
 
     expect(await client.readiness(), WindowsHelperReadiness.manifestMissing);
+    expect(await client.readiness(), WindowsHelperReadiness.ready);
+    expect(reads, 2);
+  });
+
+  test('a throwing manifest read reports a missing manifest', () async {
+    final adapter = _ResponseAdapter(
+      (_) => throw StateError('ping should not be sent'),
+    );
+    final client = _client(
+      adapter,
+      readCoreSha256: () async => throw const FileSystemException('locked'),
+    );
+
     expect(await client.readiness(), WindowsHelperReadiness.manifestMissing);
-    expect(reads, 1);
+    expect(adapter.requestCount, 0);
   });
 
   test('an HTTP Helper response reports notReady', () async {

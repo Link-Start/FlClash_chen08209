@@ -51,6 +51,10 @@ Read `.agents/architecture.md` for the current core modes, manager stack, build 
   Flutter build modes; the Helper owns executable integrity checks.
 - Protocol version 6 uses a 32-character lowercase-hex session ID. `/start` must return the submitted session and PID;
   `/stop` must never terminate a different session; Dart must verify the connected named-pipe peer PID.
+- `/start` must release the previously managed Core before it verifies, so no `/start` outcome leaves a Helper-managed
+  Core behind for the caller's direct-launch fallback to race.
+- TUN is not a required run condition. Degrading to the unelevated direct Core — and silently losing TUN — is the
+  expected outcome whenever the Helper path fails; do not fail the launch instead.
 - A desktop process lease with unconfirmed exit must remain owned until cleanup succeeds. Do not discard it and start a
   replacement Core.
 - `CoreController.close()` is terminal. Do not call it from a reusable manager lifecycle or recover by starting it again.

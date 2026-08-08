@@ -261,12 +261,14 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
                 stackTrace: stackTrace,
               );
         final desired = _desired;
-        if (desired.target == _LifecycleTarget.closed &&
-            intent.target != _LifecycleTarget.closed) {
+        if (desired.revision != intent.revision) {
+          if (desired.target != _LifecycleTarget.closed) {
+            _failCommands(intent.revision, failure);
+          }
           continue;
         }
         _publish(DesktopCoreFailed(failure));
-        _failCommands(desired.revision, failure);
+        _failCommands(intent.revision, failure);
       }
     }
   }
@@ -292,13 +294,7 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
         if (_session != null && _state is DesktopCoreRunning) {
           return _LifecycleAchievement.runningExisting;
         }
-        final started = await _startSession(intent.revision);
-        if (!started && _desired.target == _LifecycleTarget.stopped) {
-          _publish(const DesktopCoreIdle());
-        }
-        return started
-            ? _LifecycleAchievement.runningFresh
-            : _LifecycleAchievement.idle;
+        return _startForIntent(intent);
       case _LifecycleTarget.restarted:
         final session = _session;
         if (session != null) {
@@ -309,12 +305,9 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
           );
         }
         if (!_wantsRunning) {
-          return _LifecycleAchievement.idle;
+          return _abandonedStart();
         }
-        final started = await _startSession(_desired.revision);
-        return started
-            ? _LifecycleAchievement.runningFresh
-            : _LifecycleAchievement.idle;
+        return _startForIntent(intent);
       case _LifecycleTarget.stopped:
         final session = _session;
         if (session != null) {
@@ -349,6 +342,20 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   bool get _wantsRunning {
     return _desired.target == _LifecycleTarget.running ||
         _desired.target == _LifecycleTarget.restarted;
+  }
+
+  Future<_LifecycleAchievement> _startForIntent(_LifecycleIntent intent) async {
+    if (await _startSession(intent.revision)) {
+      return _LifecycleAchievement.runningFresh;
+    }
+    return _abandonedStart();
+  }
+
+  _LifecycleAchievement _abandonedStart() {
+    if (_desired.target == _LifecycleTarget.stopped) {
+      _publish(const DesktopCoreIdle());
+    }
+    return _LifecycleAchievement.idle;
   }
 
   Future<bool> _startSession(int revision) async {
@@ -394,15 +401,13 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
       }
       if (!_wantsRunning) {
         await releaseLease();
-        _publish(const DesktopCoreIdle());
         return false;
       }
       final connected = await _waitForConnectionWhileWanted(
         connectionWaiter.future,
       );
-      if (connected == null || !_wantsRunning) {
+      if (connected == null) {
         await releaseLease();
-        _publish(const DesktopCoreIdle());
         return false;
       }
       if (verifyPeerPid && connected.pid != lease.pid) {

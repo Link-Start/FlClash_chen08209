@@ -191,6 +191,7 @@ fn start(start_params: StartParams) -> warp::reply::Response {
     }
 
     let _operation = PROCESS_OPERATION.lock().unwrap();
+    stop_core_locked();
     let (core_path, _core_file) = match open_fixed_verified_core() {
         Ok(core) => core,
         Err(error) => {
@@ -202,7 +203,6 @@ fn start(start_params: StartParams) -> warp::reply::Response {
         }
     };
 
-    stop_core_locked();
     let mut process = PROCESS.lock().unwrap();
     match Command::new(&core_path)
         .current_dir(core_path.parent().unwrap())
@@ -366,7 +366,7 @@ fn ping(ping_params: PingParams) -> warp::reply::Response {
     }
 
     let result = core_path()
-        .and_then(|path| open_core(&path).map(|_| path))
+        .and_then(|path| open_core(&path))
         .and_then(|_| std::env::current_exe());
     if let Err(error) = &result {
         log_message(format!("Helper ping failed: {error}"));
@@ -412,11 +412,16 @@ async fn ping_request(ping_params: PingParams) -> Result<warp::reply::Response, 
 
 async fn handle_rejection(rejection: Rejection) -> Result<warp::reply::Response, Infallible> {
     if rejection.find::<warp::reject::InvalidQuery>().is_some() {
-        return Ok(error_response(
-            "invalidRequest",
-            "invalid ping query",
-            StatusCode::BAD_REQUEST,
-        ));
+        return Ok(warp::reply::with_header(
+            error_response(
+                "invalidRequest",
+                "invalid ping query",
+                StatusCode::BAD_REQUEST,
+            ),
+            PROTOCOL_VERSION_HEADER,
+            PROTOCOL_VERSION,
+        )
+        .into_response());
     }
     if rejection
         .find::<warp::filters::body::BodyDeserializeError>()
@@ -502,6 +507,30 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    static PROCESS_STATE: Mutex<()> = Mutex::new(());
+
+    fn lock_process_state() -> std::sync::MutexGuard<'static, ()> {
+        PROCESS_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn spawn_placeholder_core() -> std::process::Child {
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = Command::new("cmd");
+            command.args(["/c", "exit"]);
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = Command::new("true");
+        command
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn placeholder Core")
+    }
+
     #[test]
     fn protocol_6_uses_lowercase_session_ownership() {
         assert_eq!(PROTOCOL_VERSION, "6");
@@ -584,6 +613,10 @@ mod tests {
             .await;
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response.headers().get(PROTOCOL_VERSION_HEADER).unwrap(),
+            PROTOCOL_VERSION
+        );
     }
 
     #[tokio::test]
@@ -644,6 +677,31 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn start_releases_the_managed_core_before_rejecting_an_unverified_core() {
+        let _state = lock_process_state();
+        *PROCESS.lock().unwrap() = Some(ManagedCore {
+            session_id: "fedcba9876543210fedcba9876543210".to_string(),
+            child: spawn_placeholder_core(),
+        });
+
+        let response = warp::test::request()
+            .method("POST")
+            .path("/start")
+            .json(&StartParams {
+                address: r"\\.\pipe\FlClashCore_0123456789abcdef0123456789abcdef".to_string(),
+                session_id: "0123456789abcdef0123456789abcdef".to_string(),
+            })
+            .reply(&routes())
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+        assert_eq!(body["code"], "coreVerificationFailed");
+        assert!(PROCESS.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn start_rejects_an_invalid_session_before_core_verification() {
         let response = warp::test::request()
             .method("POST")
@@ -683,7 +741,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn stop_is_available_without_authentication() {
+        let _state = lock_process_state();
         let response = warp::test::request()
             .method("POST")
             .path("/stop")

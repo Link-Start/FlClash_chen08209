@@ -315,9 +315,14 @@ Windows helper integrity/version check:
   unavailable Helper, or a Helper built for a different Core) falls back to the direct Core without requesting elevation.
   If `/start` reports a pre-spawn failure — `coreVerificationFailed` (the on-disk Core no longer matches the SHA the
   Helper and manifest agree on) or `processLaunchFailed` (the Core process could not be spawned) — the launcher degrades
-  to the direct Core rather than failing the launch. The Helper spawns nothing before either failure, so this retry leaves
-  no Helper-managed Core behind.
+  to the direct Core rather than failing the launch. `/start` releases the previously managed Core before it verifies,
+  so the Helper owns no Core when either code is reported and the direct retry cannot race a Helper-managed Core.
   A mismatched Helper is reinstalled through the explicit TUN authorization flow, not at startup.
+- TUN is not a required run condition. A direct Core runs unelevated and cannot bring up TUN, so any degrade to the
+  direct Core — an unready Helper at resolve time, or a pre-spawn `/start` failure — silently drops TUN and keeps the
+  Core running. Degrading is preferred over failing the launch: an unverified Core carries no privilege the direct
+  launch path did not already have. `manifestMissing` is the one readiness that is surfaced to the user, because it
+  means the installation itself is incomplete.
 - Flutter creates a 128-bit lowercase-hex session ID and uses it as the random named-pipe suffix. `/start` receives only
   that address and session ID, validates the fixed `FlClashCore_<session>` namespace, starts the fixed Core beside the
   Helper, and returns the same session ID plus the spawned PID. Flutter verifies both the session and named-pipe peer PID.
@@ -367,8 +372,9 @@ it never hashes the Core. Protocol version 6 uses 32-character lowercase-hex ses
 
 - `GET /ping?coreSha256=...` returns the current Helper executable path with `x-flclash-helper-protocol` when the
   requested SHA matches.
-- `POST /start` rejects unknown JSON fields, validates `{address, sessionId}`, replaces any previously managed Core, and
-  returns `{sessionId, pid}`.
+- `POST /start` rejects unknown JSON fields, validates `{address, sessionId}`, then releases any previously managed Core
+  before verifying the Core — so every outcome, including a rejected one, leaves the Helper owning no Core — and returns
+  `{sessionId, pid}`.
 - `POST /stop` validates `{sessionId}` and only stops the matching managed Core. A session mismatch is HTTP 409.
 - `GET /logs` exposes the bounded recent Helper/Core stderr buffer with `no-store` caching.
 
