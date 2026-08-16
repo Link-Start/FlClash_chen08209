@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
-import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/providers/core.dart';
+import 'package:fl_clash/providers/state.dart';
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:wifi_ssid/wifi_ssid.dart';
@@ -33,7 +33,7 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.copyWith()..add(value);
+    this.value = state.append(value);
   }
 
   Future<bool> exportLogs() async {
@@ -42,7 +42,7 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
     final file = File(tempFilePath);
     await file.safeWriteAsString(logString);
     bool res = false;
-    res = await picker.saveFileWithPath(utils.logFile, tempFilePath) != null;
+    res = await picker.saveFileWithPath(logFileName, tempFilePath) != null;
     return res;
   }
 }
@@ -55,7 +55,7 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
   }
 
   void addRequest(TrackerInfo value) {
-    this.value = state.copyWith()..add(value);
+    this.value = state.append(value);
   }
 }
 
@@ -75,7 +75,7 @@ class Providers extends _$Providers with AutoDisposeNotifierMixin {
   }
 
   Future<void> syncProviders() async {
-    value = await coreController.getExternalProviders();
+    value = await ref.read(coreHandlerProvider).getExternalProviders();
   }
 }
 
@@ -104,7 +104,7 @@ class Traffics extends _$Traffics with AutoDisposeNotifierMixin {
   }
 
   void addTraffic(Traffic value) {
-    this.value = state.copyWith()..add(value);
+    this.value = state.append(value);
   }
 
   void clear() {
@@ -159,7 +159,7 @@ double viewWidth(Ref ref) {
 
 @Riverpod(keepAlive: true)
 ViewMode viewMode(Ref ref) {
-  return utils.getViewMode(ref.watch(viewWidthProvider));
+  return getViewMode(ref.watch(viewWidthProvider));
 }
 
 @Riverpod(keepAlive: true)

@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Check format
+        run: dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
@@ -50,7 +53,7 @@ jobs:
         run: flutter test --reporter expanded --coverage
 
       - name: Check coverage
-        run: dart run tool/check_coverage.dart coverage/lcov.info 71
+        run: dart run tool/check_coverage.dart coverage/lcov.info 75
 
       - name: Validate local Flutter packages
         shell: bash
@@ -81,9 +84,18 @@ jobs:
             echo 'No Go tests found in core/; the test step would pass vacuously.' >&2
             exit 1
           fi
-          test -z "$(gofmt -l ./*.go)" || { gofmt -l ./*.go >&2; exit 1; }
+          test -z "$(gofmt -l ./*.go ./platform ./tun)" || {
+            gofmt -l ./*.go ./platform ./tun >&2
+            exit 1
+          }
           go test -count=1 .
           go vet .
+          # `go vet .` only reaches the root package. `platform` and `tun` are
+          # behind build constraints, so they need an explicit GOOS to compile
+          # at all; without this they ship unvetted. The `android && cgo` files
+          # (tun, platform/limit.go) still need the NDK and are only checked by
+          # the Android build job.
+          GOOS=linux go vet ./platform
 
       - name: Setup Java
         uses: actions/setup-java@v4

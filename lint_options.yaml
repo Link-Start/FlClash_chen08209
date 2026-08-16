@@ -33,3 +33,21 @@ linter:
     # Async
     use_build_context_synchronously: true
     unnecessary_await_in_return: true
+
+    # Resource lifecycle. `cancel_subscriptions` and `close_sinks` guard the
+    # dispose contract that `pages/scan.dart` broke by awaiting before calling
+    # `super.dispose()`; the rest are latent-bug rules the tree already passes,
+    # so they cost nothing to keep and stop a regression from landing quietly.
+    cancel_subscriptions: true
+    close_sinks: true
+
+    # Correctness
+    only_throw_errors: true
+    test_types_in_equals: true
+    avoid_type_to_string: true
+    literal_only_boolean_expressions: true
+    no_adjacent_strings_in_list: true
+    empty_statements: true
+    throw_in_finally: true
+    control_flow_in_finally: true
+    unawaited_futures: true

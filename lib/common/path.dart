@@ -75,7 +75,7 @@ class AppPath {
 
   Future<String> get tempFilePath async {
     final mTempDir = await tempDir.future;
-    return join(mTempDir.path, 'temp${utils.id}');
+    return join(mTempDir.path, 'temp$uniqueId');
   }
 
   Future<String> get lockFilePath async {
@@ -86,11 +86,6 @@ class AppPath {
   Future<String> get configFilePath async {
     final mHomeDirPath = await homeDirPath;
     return join(mHomeDirPath, 'config.yaml');
-  }
-
-  Future<String> get sharedFilePath async {
-    final mHomeDirPath = await homeDirPath;
-    return join(mHomeDirPath, 'shared.json');
   }
 
   Future<String> get sharedPreferencesPath async {
@@ -117,28 +112,9 @@ class AppPath {
     return join(path, '$fileName.js');
   }
 
-  Future<String> getIconsCacheDir() async {
-    final directory = await cacheDir.future;
-    return join(directory.path, 'icons');
-  }
-
   Future<String> getProvidersRootPath() async {
     final directory = await profilesPath;
     return join(directory, 'providers');
-  }
-
-  Future<String> getProvidersDirPath(String id) async {
-    final directory = await profilesPath;
-    return join(directory, 'providers', id);
-  }
-
-  Future<String> getProvidersFilePath(
-    String id,
-    String type,
-    String url,
-  ) async {
-    final directory = await profilesPath;
-    return join(directory, 'providers', id, type, url.toMd5());
   }
 
   Future<String> get tempPath async {
@@ -148,3 +124,11 @@ class AppPath {
 }
 
 final appPath = AppPath();
+
+String getBackupFileName() {
+  return '${appName}_backup_${DateTime.now().show}.zip';
+}
+
+String get logFileName {
+  return '${appName}_${DateTime.now().show}.log';
+}

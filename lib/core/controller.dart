@@ -23,7 +23,17 @@ class CoreController {
   }
 
   @visibleForTesting
-  CoreController.test(this._interface);
+  CoreController.test(this._interface) {
+    _instance = this;
+  }
+
+  /// A controller that is not published as the process-wide instance.
+  ///
+  /// Pass one to `coreHandlerProvider.overrideWithValue` so the fake lives and
+  /// dies with that container, instead of `CoreController.test`, which claims
+  /// the singleton and needs a tearDown to release it.
+  @visibleForTesting
+  CoreController.scoped(this._interface);
 
   @visibleForTesting
   static void resetInstance() {

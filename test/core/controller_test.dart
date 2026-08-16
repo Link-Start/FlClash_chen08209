@@ -143,7 +143,7 @@ void main() {
         },
       );
       var completed = false;
-      setupFuture.then((_) => completed = true);
+      unawaited(setupFuture.then((_) => completed = true));
       await Future<void>.delayed(Duration.zero);
 
       expect(events, ['setup', 'preload']);

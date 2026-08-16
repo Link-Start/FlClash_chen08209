@@ -2,6 +2,8 @@ part of '../action.dart';
 
 @Riverpod(keepAlive: true)
 class StoreAction extends _$StoreAction {
+  CoreController get _core => ref.read(coreHandlerProvider);
+
   @override
   void build() {}
 
@@ -14,7 +16,10 @@ class StoreAction extends _$StoreAction {
         (state) async => (await state).map((item) => item.id),
       ),
     );
-    final pathsToDelete = await shakingProfileTask(VM2(profileIds, scriptIds));
+    final pathsToDelete = await shakingProfileTask((
+      profileIds: profileIds,
+      scriptIds: scriptIds,
+    ));
     await Future.wait(
       pathsToDelete.map((path) => File(path).safeDelete(recursive: true)),
     );
@@ -27,6 +32,7 @@ class StoreAction extends _$StoreAction {
   }
 
   Future handleClear() async {
+    debouncer.cancel(FunctionTag.savePreferences);
     final profileIds = ref
         .read(profilesProvider)
         .map((item) => item.id)
@@ -41,9 +47,7 @@ class StoreAction extends _$StoreAction {
         }
       }
     }
-    final clearResults = await Future.wait(
-      profileIds.map(coreController.clearEffect),
-    );
+    final clearResults = await Future.wait(profileIds.map(_core.clearEffect));
     for (final error in clearResults.where((error) => error.isNotEmpty)) {
       commonPrint.log(error, logLevel: LogLevel.warning);
     }
@@ -52,7 +56,6 @@ class StoreAction extends _$StoreAction {
     await database.close();
     await File(await appPath.databasePath).safeDelete(recursive: true);
     await Directory(await appPath.profilesPath).safeDelete(recursive: true);
-    await preferences.clearPreferences();
-    ref.read(systemActionProvider.notifier).handleExit(false);
+    unawaited(ref.read(systemActionProvider.notifier).handleExit(false));
   }
 }

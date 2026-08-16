@@ -124,7 +124,7 @@ class _CommonPopupBoxState extends State<CommonPopupBox> {
     Navigator.of(context)
         .push(
           CommonPopupRoute(
-            barrierLabel: utils.id,
+            barrierLabel: uniqueId,
             builder: (BuildContext context) {
               return widget.popup;
             },

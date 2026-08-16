@@ -53,3 +53,34 @@ extension DateTimeExtension on DateTime {
     return toString().substring(10, 19);
   }
 }
+
+String getDateStringLast2(int value) {
+  final valueRaw = '0$value';
+  return valueRaw.substring(valueRaw.length - 2);
+}
+
+String getTimeDifference(DateTime dateTime) {
+  final currentDateTime = DateTime.now();
+  final difference = currentDateTime.difference(dateTime);
+  final inHours = difference.inHours;
+  final inMinutes = difference.inMinutes;
+  final inSeconds = difference.inSeconds;
+
+  return '${getDateStringLast2(inHours)}:${getDateStringLast2(inMinutes)}:${getDateStringLast2(inSeconds)}';
+}
+
+String getTimeText(int? timeStamp) {
+  if (timeStamp == null) {
+    return '00:00:00';
+  }
+  final diff = timeStamp / 1000;
+  final inHours = (diff / 3600).floor();
+  if (inHours > 999) {
+    return '999:59:59';
+  }
+  final inMinutes = (diff / 60 % 60).floor();
+  final inSeconds = (diff % 60).floor();
+  final hoursText = inHours.toString().padLeft(2, '0');
+
+  return '$hoursText:${getDateStringLast2(inMinutes)}:${getDateStringLast2(inSeconds)}';
+}

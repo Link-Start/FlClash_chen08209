@@ -18,9 +18,13 @@ func init() {
 	go runMessageBatcher(priorityMessageQueue, bulkMessageQueue, sendMessageBatch)
 }
 
+func isBulkMessage(message Message) bool {
+	return message.Type == LogMessage || message.Type == RequestMessage
+}
+
 func sendMessage(message Message) {
 	queue := priorityMessageQueue
-	if message.Type == LogMessage || message.Type == RequestMessage {
+	if isBulkMessage(message) {
 		queue = bulkMessageQueue
 	}
 	enqueueLatest(queue, message)

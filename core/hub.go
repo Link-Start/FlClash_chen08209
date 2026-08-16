@@ -85,46 +85,78 @@ func handleShutdown() bool {
 
 func handleValidateConfig(path string) string {
 	buf, err := readFile(path)
-	_, err = config.UnmarshalRawConfig(buf)
 	if err != nil {
 		return err.Error()
 	}
+	// Do not fold this into the read above: assigning both errors to the same
+	// variable used to drop the read failure, so a missing file validated as OK.
+	if _, err = config.UnmarshalRawConfig(buf); err != nil {
+		return err.Error()
+	}
 	return ""
+}
+
+const globalProxyName = "GLOBAL"
+
+// isProxyGroupType reports whether an adapter type is one the UI can select
+// within, i.e. a group rather than a single outbound.
+func isProxyGroupType(adapterType constant.AdapterType) bool {
+	switch adapterType {
+	case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance:
+		return true
+	default:
+		return false
+	}
+}
+
+// proxyGroupNames keeps the group-type entries of nameList in order and makes
+// sure GLOBAL leads the result when the config did not list it itself.
+//
+// typeOf reports the adapter type registered for a name, and whether there is
+// one at all.
+func proxyGroupNames(
+	nameList []string,
+	typeOf func(name string) (constant.AdapterType, bool),
+) []string {
+	hasGlobal := false
+	names := make([]string, 0, len(nameList)+1)
+
+	for _, name := range nameList {
+		if name == globalProxyName {
+			hasGlobal = true
+		}
+		adapterType, ok := typeOf(name)
+		if !ok || !isProxyGroupType(adapterType) {
+			continue
+		}
+		names = append(names, name)
+	}
+
+	if !hasGlobal {
+		// The same type check as above: prepending GLOBAL unconditionally let a
+		// non-group adapter under that name through the filter the listed path
+		// applies.
+		if adapterType, ok := typeOf(globalProxyName); ok && isProxyGroupType(adapterType) {
+			names = append([]string{globalProxyName}, names...)
+		}
+	}
+
+	return names
 }
 
 func handleGetProxies() ProxiesData {
 	runLock.Lock()
 	defer runLock.Unlock()
 
-	nameList := config.GetProxyNameList()
-
 	proxies := tunnel.AllProxies()
 
-	hasGlobal := false
-
-	allNames := make([]string, 0, len(nameList)+1)
-
-	for _, name := range nameList {
-		if name == "GLOBAL" {
-			hasGlobal = true
-		}
-
+	allNames := proxyGroupNames(config.GetProxyNameList(), func(name string) (constant.AdapterType, bool) {
 		p, ok := proxies[name]
 		if !ok || p == nil {
-			continue
+			return 0, false
 		}
-		switch p.Type() {
-		case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance:
-			allNames = append(allNames, name)
-		default:
-		}
-	}
-
-	if !hasGlobal {
-		if p, ok := proxies["GLOBAL"]; ok && p != nil {
-			allNames = append([]string{"GLOBAL"}, allNames...)
-		}
-	}
+		return p.Type(), true
+	})
 
 	return ProxiesData{
 		All:     allNames,
@@ -189,6 +221,15 @@ func handleResetTraffic() {
 	statistic.DefaultManager.ResetStatistic()
 }
 
+// delayValue maps a URL-test result onto the wire representation, where a zero
+// measurement means "unreachable" and is reported as -1.
+func delayValue(delay uint16) int32 {
+	if delay == 0 {
+		return -1
+	}
+	return int32(delay)
+}
+
 func handleAsyncTestDelay(params *TestDelayParams, fn func(*Delay)) {
 	batchKey := params.ProxyName + "\x00" + params.TestUrl
 	mBatch.Go(batchKey, func() (bool, error) {
@@ -219,12 +260,12 @@ func handleAsyncTestDelay(params *TestDelayParams, fn func(*Delay)) {
 			return false, nil
 		}
 		delay, err := proxy.URLTest(ctx, testUrl, expectedStatus)
-		if err != nil || delay == 0 {
+		if err != nil {
 			fn(delayData)
 			return false, nil
 		}
 
-		delayData.Value = int32(delay)
+		delayData.Value = delayValue(delay)
 		fn(delayData)
 		return false, nil
 	})
@@ -438,6 +479,17 @@ func handleUpdateConfig(params *UpdateParams) string {
 	return ""
 }
 
+// providerPaths derives the providers root and the directory belonging to one
+// profile.
+//
+// The profile ID is an int64 rendered through strconv, so the last element can
+// never carry a separator or a `..` — that is what keeps handleClearEffect from
+// becoming a general-purpose privileged file deletion API.
+func providerPaths(homeDir string, profileId int64) (root string, target string) {
+	root = filepath.Join(homeDir, "profiles", "providers")
+	return root, filepath.Join(root, strconv.FormatInt(profileId, 10))
+}
+
 // handleClearEffect derives the provider directory from a profile ID so the
 // method cannot be used as a general-purpose privileged file deletion API.
 func handleClearEffect(profileId int64, response MethodResponse) {
@@ -450,15 +502,7 @@ func handleClearEffect(profileId int64, response MethodResponse) {
 			response.success("invalid profile id")
 			return
 		}
-		providersRoot := filepath.Join(
-			constant.Path.HomeDir(),
-			"profiles",
-			"providers",
-		)
-		providersPath := filepath.Join(
-			providersRoot,
-			strconv.FormatInt(profileId, 10),
-		)
+		providersRoot, providersPath := providerPaths(constant.Path.HomeDir(), profileId)
 		if err := os.RemoveAll(providersPath); err != nil {
 			response.success(err.Error())
 			return
@@ -482,13 +526,9 @@ func handleSetupConfig(params *SetupParams) string {
 func init() {
 	adapter.UrlTestHook = func(url string, name string, delay uint16) {
 		delayData := &Delay{
-			Url:  url,
-			Name: name,
-		}
-		if delay == 0 {
-			delayData.Value = -1
-		} else {
-			delayData.Value = int32(delay)
+			Url:   url,
+			Name:  name,
+			Value: delayValue(delay),
 		}
 		sendMessage(Message{
 			Type: DelayMessage,

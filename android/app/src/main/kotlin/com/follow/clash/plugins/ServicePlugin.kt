@@ -31,7 +31,11 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         ServiceController.setEventListener(null)
     }
 
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+    override fun onMethodCall(call: MethodCall, rawResult: MethodChannel.Result) {
+        // Most handlers below reply from a scope worker on Dispatchers.Default,
+        // but a MethodChannel.Result has to be answered on the platform thread.
+        // Wrapping once here covers every branch, including notImplemented.
+        val result = MainThreadResult(rawResult, scope)
         when (call.method) {
             "init" -> initialize(result)
             "shutdown" -> shutdown(result)
@@ -107,5 +111,24 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         scope.launch(Dispatchers.Main) {
             channel.invokeMethod("event", value)
         }
+    }
+}
+
+private class MainThreadResult(
+    private val delegate: MethodChannel.Result,
+    private val scope: CoroutineScope,
+) : MethodChannel.Result {
+    override fun success(result: Any?) = post { delegate.success(result) }
+
+    override fun error(code: String, message: String?, details: Any?) =
+        post { delegate.error(code, message, details) }
+
+    override fun notImplemented() = post { delegate.notImplemented() }
+
+    // immediate so a handler that already runs on the platform thread still
+    // replies inline, and cancelling the scope drops replies for an engine
+    // that has already detached.
+    private fun post(block: () -> Unit) {
+        scope.launch(Dispatchers.Main.immediate) { block() }
     }
 }

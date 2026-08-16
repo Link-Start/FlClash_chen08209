@@ -9,6 +9,7 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'widget_registry.dart';
 import 'widgets/core_status_button.dart';
 import 'widgets/start_button.dart';
 
@@ -28,6 +29,32 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   final key = GlobalKey<SuperGridState>();
   final _isEditNotifier = ValueNotifier<bool>(false);
   final _addedWidgetsNotifier = ValueNotifier<List<GridItem>>([]);
+
+  @override
+  void initState() {
+    super.initState();
+    // Derived from the dashboard widgets alone, so it is recomputed when those
+    // change rather than from build — which was registering a fresh
+    // post-frame callback on every single rebuild.
+    ref.listenManual(
+      dashboardStateProvider.select((state) => state.dashboardWidgets),
+      (_, dashboardWidgets) => _syncAddedWidgets(dashboardWidgets),
+      fireImmediately: true,
+    );
+  }
+
+  void _syncAddedWidgets(List<DashboardWidget> dashboardWidgets) {
+    bool onThisPlatform(DashboardWidget item) =>
+        item.platforms.contains(SupportPlatform.currentPlatform);
+    final shown = dashboardWidgets
+        .where(onThisPlatform)
+        .map((item) => item.widget)
+        .toSet();
+    _addedWidgetsNotifier.value = DashboardWidget.values
+        .where((item) => onThisPlatform(item) && !shown.contains(item.widget))
+        .map((item) => item.widget)
+        .toList();
+  }
 
   @override
   void dispose() {
@@ -160,7 +187,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     if (children.isEmpty) {
       return null;
     }
-    return children.map(DashboardWidget.getDashboardWidget).toList();
+    return children.map(dashboardWidgetOf).toList();
   }
 
   void _saveDashboardWidgets(List<DashboardWidget> dashboardWidgets) {
@@ -180,16 +207,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           )
           .map((item) => item.widget),
     ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _addedWidgetsNotifier.value = DashboardWidget.values
-          .where(
-            (item) =>
-                !children.contains(item.widget) &&
-                item.platforms.contains(SupportPlatform.currentPlatform),
-          )
-          .map((item) => item.widget)
-          .toList();
-    });
     return _buildIsEdit(
       (isEdit) => CommonScaffold(
         title: context.appLocalizations.dashboard,

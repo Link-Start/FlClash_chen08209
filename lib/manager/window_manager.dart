@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/common/launch.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
-import 'package:fl_clash/state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_ext/window_ext.dart';
@@ -65,6 +65,9 @@ class _WindowContainerState extends ConsumerState<WindowManager>
   void onWindowMoved() {
     super.onWindowMoved();
     windowManager.getPosition().then((offset) {
+      if (!mounted) {
+        return;
+      }
       ref
           .read(windowSettingProvider.notifier)
           .update((state) => state.copyWith(top: offset.dy, left: offset.dx));
@@ -75,6 +78,9 @@ class _WindowContainerState extends ConsumerState<WindowManager>
   Future<void> onWindowResized() async {
     super.onWindowResized();
     final size = await windowManager.getSize();
+    if (!mounted) {
+      return;
+    }
     ref
         .read(windowSettingProvider.notifier)
         .update(
@@ -98,7 +104,7 @@ class _WindowContainerState extends ConsumerState<WindowManager>
   }
 
   @override
-  Future<void> dispose() async {
+  void dispose() {
     windowManager.removeListener(this);
     windowExtManager.removeListener(this);
     super.dispose();
@@ -136,14 +142,14 @@ class WindowHeaderContainer extends StatelessWidget {
   }
 }
 
-class WindowHeader extends StatefulWidget {
+class WindowHeader extends ConsumerStatefulWidget {
   const WindowHeader({super.key});
 
   @override
-  State<WindowHeader> createState() => _WindowHeaderState();
+  ConsumerState<WindowHeader> createState() => _WindowHeaderState();
 }
 
-class _WindowHeaderState extends State<WindowHeader> {
+class _WindowHeaderState extends ConsumerState<WindowHeader> {
   final isMaximizedNotifier = ValueNotifier<bool>(false);
   final isPinNotifier = ValueNotifier<bool>(false);
 
@@ -170,12 +176,12 @@ class _WindowHeaderState extends State<WindowHeader> {
     if (isMaximized) {
       await windowManager.unmaximize();
       if (system.isWindows) {
-        windowExtManager.setWindowCornerPreference(round: true);
+        unawaited(windowExtManager.setWindowCornerPreference(round: true));
       }
     } else {
       await windowManager.maximize();
       if (system.isWindows) {
-        windowExtManager.setWindowCornerPreference(round: false);
+        unawaited(windowExtManager.setWindowCornerPreference(round: false));
       }
     }
     final res = await windowManager.isMaximized();
@@ -195,7 +201,7 @@ class _WindowHeaderState extends State<WindowHeader> {
       children: [
         IconButton(
           onPressed: () async {
-            _updatePin();
+            await _updatePin();
           },
           icon: ValueListenableBuilder(
             valueListenable: isPinNotifier,
@@ -214,7 +220,7 @@ class _WindowHeaderState extends State<WindowHeader> {
         ),
         IconButton(
           onPressed: () async {
-            _updateMaximized();
+            await _updateMaximized();
           },
           icon: ValueListenableBuilder(
             valueListenable: isMaximizedNotifier,
@@ -227,15 +233,10 @@ class _WindowHeaderState extends State<WindowHeader> {
         ),
         IconButton(
           onPressed: () {
-            globalState.container
-                .read(systemActionProvider.notifier)
-                .handleClose();
+            ref.read(systemActionProvider.notifier).handleClose();
           },
           icon: const Icon(Icons.close),
         ),
-        // const SizedBox(
-        //   width: 8,
-        // ),
       ],
     );
   }

@@ -23,3 +23,28 @@ extension InternetAddressExt on InternetAddress {
     return type == InternetAddressType.IPv4;
   }
 }
+
+Future<String?> getLocalIpAddress() async {
+  final List<NetworkInterface> interfaces =
+      await NetworkInterface.list(includeLoopback: false)
+        ..sort((a, b) {
+          if (a.isWifi && !b.isWifi) return -1;
+          if (!a.isWifi && b.isWifi) return 1;
+          if (a.includesIPv4 && !b.includesIPv4) return -1;
+          if (!a.includesIPv4 && b.includesIPv4) return 1;
+          return 0;
+        });
+  for (final interface in interfaces) {
+    final addresses = interface.addresses;
+    if (addresses.isEmpty) {
+      continue;
+    }
+    addresses.sort((a, b) {
+      if (a.isIPv4 && !b.isIPv4) return -1;
+      if (!a.isIPv4 && b.isIPv4) return 1;
+      return 0;
+    });
+    return addresses.first.address;
+  }
+  return '';
+}

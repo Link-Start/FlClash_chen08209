@@ -1,6 +1,32 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:flutter/foundation.dart';
+
+// Callers pass async closures to these schedulers, and Function.apply hands back
+// a Future nobody is waiting on. Without this the failure lands in the zone as
+// an unhandled error, detached from whatever scheduled it.
+void _applyAndReport(dynamic tag, Function func, List<dynamic>? args) {
+  void report(Object error, StackTrace stackTrace) {
+    commonPrint.log(
+      'Scheduled task $tag failed: ${compactError(error)}, $stackTrace',
+      logLevel: LogLevel.warning,
+    );
+  }
+
+  try {
+    final result = Function.apply(func, args);
+    if (result is Future) {
+      // `catchError` requires the handler to return the future's own type, so
+      // it throws on anything but `Future<void>`. `then<void>` accepts a void
+      // handler whatever the closure returned.
+      result.then<void>((_) {}, onError: report);
+    }
+  } catch (error, stackTrace) {
+    report(error, stackTrace);
+  }
+}
 
 class Debouncer {
   final Map<dynamic, Timer?> _operations = {};
@@ -18,7 +44,7 @@ class Debouncer {
     _operations[tag] = Timer(duration ?? const Duration(milliseconds: 600), () {
       _operations[tag]?.cancel();
       _operations.remove(tag);
-      Function.apply(func, args);
+      _applyAndReport(tag, func, args);
     });
   }
 
@@ -59,14 +85,14 @@ class Throttler {
       return true;
     }
     if (fire) {
-      Function.apply(func, args);
+      _applyAndReport(tag, func, args);
       _operations[tag] = Timer(duration, () {
         _operations[tag]?.cancel();
         _operations.remove(tag);
       });
     } else {
       _operations[tag] = Timer(duration, () {
-        Function.apply(func, args);
+        _applyAndReport(tag, func, args);
         _operations[tag]?.cancel();
         _operations.remove(tag);
       });
@@ -95,9 +121,25 @@ Future<T> retry<T>({
     }
     await Future.delayed(delay);
   }
-  throw 'retry error';
+  throw TimeoutException('retry gave up after $maxAttempts attempts');
 }
 
 final debouncer = Debouncer();
 
 final throttler = Throttler();
+
+FutureOr<T> handleWatch<T>({
+  required Function function,
+  required void Function() onStart,
+  required void Function(T data, int elapsedMilliseconds) onEnd,
+}) async {
+  if (kDebugMode && watchExecution) {
+    onStart();
+    final stopwatch = Stopwatch()..start();
+    final res = await function();
+    stopwatch.stop();
+    onEnd(res, stopwatch.elapsedMilliseconds);
+    return res;
+  }
+  return await function();
+}

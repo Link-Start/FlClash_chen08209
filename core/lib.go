@@ -27,7 +27,13 @@ import (
 	"unsafe"
 )
 
-var eventListener unsafe.Pointer
+// eventListener is a JNI global reference written from the platform thread and
+// read from the goroutines that pump core events. The lock is what keeps a
+// release from landing between a reader's nil check and its use.
+var (
+	eventListenerLock sync.RWMutex
+	eventListener     unsafe.Pointer
+)
 
 type TunHandler struct {
 	listener *sing_tun.Listener
@@ -234,7 +240,9 @@ func quickSetup(callback unsafe.Pointer, initParamsChar *C.char, setupParamsChar
 
 //export setEventListener
 func setEventListener(listener unsafe.Pointer) {
-	if eventListener != nil || listener == nil {
+	eventListenerLock.Lock()
+	defer eventListenerLock.Unlock()
+	if eventListener != nil {
 		releaseObject(eventListener)
 	}
 	eventListener = listener
@@ -260,6 +268,10 @@ func marshalResult(value any) string {
 }
 
 func sendMessageBatch(messages []Message) {
+	// Held across the callback rather than just the read: a bare read would
+	// leave the reference free to be released before invokeResult uses it.
+	eventListenerLock.RLock()
+	defer eventListenerLock.RUnlock()
 	if eventListener == nil {
 		return
 	}

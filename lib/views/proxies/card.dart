@@ -3,12 +3,11 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
-import 'package:fl_clash/views/proxies/common.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ProxyCard extends StatelessWidget {
+class ProxyCard extends ConsumerWidget {
   final String groupName;
   final Proxy proxy;
   final GroupType groupType;
@@ -26,8 +25,8 @@ class ProxyCard extends StatelessWidget {
 
   Measure get measure => globalState.measure;
 
-  void _handleTestCurrentDelay() {
-    proxyDelayTest(proxy, testUrl);
+  void _handleTestCurrentDelay(WidgetRef ref) {
+    ref.read(proxiesActionProvider.notifier).proxyDelayTest(proxy, testUrl);
   }
 
   Widget _buildDelayText() {
@@ -52,16 +51,16 @@ class ProxyCard extends StatelessWidget {
                             icon: const Icon(Icons.bolt),
                             iconSize: globalState.measure.labelSmallHeight,
                             padding: EdgeInsets.zero,
-                            onPressed: _handleTestCurrentDelay,
+                            onPressed: () => _handleTestCurrentDelay(ref),
                           ),
                   )
                 : GestureDetector(
-                    onTap: _handleTestCurrentDelay,
+                    onTap: () => _handleTestCurrentDelay(ref),
                     child: Text(
                       delay > 0 ? '$delay ms' : 'Timeout',
                       style: context.textTheme.labelSmall?.copyWith(
                         overflow: TextOverflow.ellipsis,
-                        color: utils.getDelayColor(delay),
+                        color: getDelayColor(delay),
                       ),
                     ),
                   ),
@@ -98,7 +97,6 @@ class ProxyCard extends StatelessWidget {
   Future<void> _changeProxy(WidgetRef ref) async {
     final isComputedSelected = groupType.isComputedSelected;
     final isSelector = groupType == GroupType.Selector;
-    final ref = globalState.container;
     if (isComputedSelected || isSelector) {
       final currentProxyName = ref.read(proxyNameProvider(groupName));
       final nextProxyName = switch (isComputedSelected) {
@@ -113,11 +111,11 @@ class ProxyCard extends StatelessWidget {
           .changeProxyDebounce(groupName, nextProxyName);
       return;
     }
-    globalState.showNotifier(currentAppLocalizations.notSelectedTip);
+    dialogs.showNotifier(currentAppLocalizations.notSelectedTip);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final measure = globalState.measure;
     final delayText = _buildDelayText();
     final proxyNameText = _buildProxyNameText(context);

@@ -31,7 +31,9 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     ref.listenManual(sharedStateProvider, (prev, next) {
       if (prev != next) {
         debouncer.call(FunctionTag.saveSharedFile, () async {
-          preferences.saveShareState(next);
+          // Awaited so a failure reaches the debouncer's error reporting instead
+          // of escaping into the zone as an unhandled error.
+          await preferences.saveShareState(next);
         }, duration: const Duration(seconds: 1));
         if (prev?.needSyncSharedState != next.needSyncSharedState) {
           service?.syncState(next.needSyncSharedState);
@@ -42,7 +44,7 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
   }
 
   @override
-  Future<void> dispose() async {
+  void dispose() {
     service?.removeListener(this);
     super.dispose();
   }

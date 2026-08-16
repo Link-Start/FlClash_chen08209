@@ -40,9 +40,9 @@ class AutoLaunch {
     }
     if (await isEnable == isAutoLaunch) return;
     if (isAutoLaunch == true) {
-      enable();
+      unawaited(enable());
     } else {
-      disable();
+      unawaited(disable());
     }
   }
 }

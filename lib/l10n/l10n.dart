@@ -719,11 +719,6 @@ class AppLocalizations {
     return Intl.message('Selected', name: 'selected', desc: '', args: []);
   }
 
-  /// `ProxyPort`
-  String get proxyPort {
-    return Intl.message('ProxyPort', name: 'proxyPort', desc: '', args: []);
-  }
-
   /// `Port`
   String get port {
     return Intl.message('Port', name: 'port', desc: '', args: []);
@@ -2599,11 +2594,6 @@ class AppLocalizations {
     return Intl.message('Color', name: 'color', desc: '', args: []);
   }
 
-  /// `Rename`
-  String get rename {
-    return Intl.message('Rename', name: 'rename', desc: '', args: []);
-  }
-
   /// `Unnamed`
   String get unnamed {
     return Intl.message('Unnamed', name: 'unnamed', desc: '', args: []);
@@ -3047,11 +3037,6 @@ class AppLocalizations {
   /// `Loading...`
   String get loading {
     return Intl.message('Loading...', name: 'loading', desc: '', args: []);
-  }
-
-  /// `Load test`
-  String get loadTest {
-    return Intl.message('Load test', name: 'loadTest', desc: '', args: []);
   }
 
   /// `{count, plural, =1{1 year ago} other{{count} years ago}}`

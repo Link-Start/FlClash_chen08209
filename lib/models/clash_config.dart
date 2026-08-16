@@ -163,6 +163,42 @@ abstract class CustomOverwriteDate with _$CustomOverwriteDate {
 }
 
 @freezed
+abstract class CustomOverwriteSelectorState
+    with _$CustomOverwriteSelectorState {
+  const factory CustomOverwriteSelectorState({
+    required List<Proxy> proxies,
+    required List<String> subRules,
+    required List<String> proxyProviders,
+  }) = _CustomOverwriteSelectorState;
+}
+
+@freezed
+abstract class ProxiesAndGroupsSelectorState
+    with _$ProxiesAndGroupsSelectorState {
+  const factory ProxiesAndGroupsSelectorState({
+    required List<Proxy> proxies,
+    required List<ProxyGroup> proxyGroups,
+  }) = _ProxiesAndGroupsSelectorState;
+}
+
+@freezed
+abstract class RuleTargetsSelectorState with _$RuleTargetsSelectorState {
+  const factory RuleTargetsSelectorState({
+    required Set<String> ruleTargets,
+    required Set<String> subRules,
+  }) = _RuleTargetsSelectorState;
+}
+
+@freezed
+abstract class OverwriteIncludeSelectorState
+    with _$OverwriteIncludeSelectorState {
+  const factory OverwriteIncludeSelectorState({
+    required bool includeAll,
+    required List<String> names,
+  }) = _OverwriteIncludeSelectorState;
+}
+
+@freezed
 abstract class RuleProvider with _$RuleProvider {
   const factory RuleProvider({required String name}) = _RuleProvider;
 
@@ -230,11 +266,11 @@ abstract class Tun with _$Tun {
     if (json == null) {
       return defaultTun;
     }
-    try {
-      return Tun.fromJson(json);
-    } catch (_) {
-      return defaultTun;
-    }
+    return decodeOrRestoreDefault(
+      'tun config',
+      () => Tun.fromJson(json),
+      () => defaultTun,
+    );
   }
 }
 
@@ -311,11 +347,11 @@ abstract class Dns with _$Dns {
   factory Dns.fromJson(Map<String, Object?> json) => _$DnsFromJson(json);
 
   factory Dns.safeDnsFromJson(Map<String, Object?> json) {
-    try {
-      return Dns.fromJson(json);
-    } catch (_) {
-      return const Dns();
-    }
+    return decodeOrRestoreDefault(
+      'dns config',
+      () => Dns.fromJson(json),
+      () => const Dns(),
+    );
   }
 }
 
@@ -332,10 +368,6 @@ abstract class Rule with _$Rule {
     @Default(false) bool src,
     String? order,
   }) = _Rule;
-
-  // factory Rule.parseString(String? value) {
-  //   return Rule.parse(Rule.value(value ?? ''));
-  // }
 
   factory Rule.init() {
     return Rule(
@@ -442,53 +474,12 @@ extension RuleExt on Rule {
   }
 }
 
-// @freezed
-// abstract class Rule with _$Rule {
-//   const factory Rule({required int id, required String value, String? order}) =
-//       _Rule;
-//
-//   factory Rule.value(String value) {
-//     return Rule(value: value, id: snowflake.id);
-//   }
-//
-//   factory Rule.fromJson(Map<String, Object?> json) => _$RuleFromJson(json);
-// }
-//
-// extension RulesExt on List<Rule> {
-//   List<Rule> copyAndPut(Rule rule) {
-//     var newList = List<Rule>.from(this);
-//     final index = newList.indexWhere((item) => item.id == rule.id);
-//     if (index != -1) {
-//       rule = newList[index] = rule;
-//     } else {
-//       newList.insert(0, rule);
-//     }
-//     return newList;
-//   }
-// }
-
-// @freezed
-// abstract class SubRule with _$SubRule {
-//   const factory SubRule({required String name}) = _SubRule;
-//
-//   factory SubRule.fromJson(Map<String, Object?> json) =>
-//       _$SubRuleFromJson(json);
-// }
-//
 List<Rule> _genRules(List<dynamic>? rules) {
   if (rules == null) {
     return [];
   }
   return rules.map((item) => Rule.parse(item)).toList();
 }
-
-// List<RuleProvider> _genRuleProviders(Map<String, dynamic> json) {
-//   return json.entries.map((entry) => RuleProvider(name: entry.key)).toList();
-// }
-//
-// List<SubRule> _genSubRules(Map<String, dynamic> json) {
-//   return json.entries.map((entry) => SubRule(name: entry.key)).toList();
-// }
 
 List<String> _genList(Map<String, dynamic> json) {
   return json.entries.map((entry) => entry.key).toList();
@@ -585,10 +576,10 @@ abstract class PatchClashConfig with _$PatchClashConfig {
     if (json == null) {
       return defaultClashConfig;
     }
-    try {
-      return PatchClashConfig.fromJson(json);
-    } catch (_) {
-      return defaultClashConfig;
-    }
+    return decodeOrRestoreDefault(
+      'clash config',
+      () => PatchClashConfig.fromJson(json),
+      () => defaultClashConfig,
+    );
   }
 }

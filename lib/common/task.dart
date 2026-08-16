@@ -46,10 +46,14 @@ Future<String> _encodeMD5<T>(String content) async {
 }
 
 Future<List<Group>> toGroupsTask(ComputeGroupsState data) async {
-  return compute<ComputeGroupsState, List<Group>>(_toGroupsTask, data);
+  return compute<ComputeGroupsState, List<Group>>(buildGroups, data);
 }
 
-Future<List<Group>> _toGroupsTask(ComputeGroupsState state) async {
+/// Resolves each group's member names into the proxy entries they point at and
+/// sorts the result. Reads [ComputeGroupsState.proxiesData] without writing to
+/// it, so the caller's map survives a second pass unchanged.
+@visibleForTesting
+Future<List<Group>> buildGroups(ComputeGroupsState state) async {
   final proxiesData = state.proxiesData;
   final all = proxiesData.all;
   final sortType = state.sortType;
@@ -58,21 +62,18 @@ Future<List<Group>> _toGroupsTask(ComputeGroupsState state) async {
   final defaultTestUrl = state.defaultTestUrl;
   final proxies = proxiesData.proxies;
   if (proxies.isEmpty) return [];
-  final groupsRaw = all
-      .where((name) {
-        final proxy = proxies[name] ?? {};
-        return GroupTypeExtension.valueList.contains(proxy['type']);
-      })
-      .map((groupName) {
-        final group = proxies[groupName];
-        group['all'] = ((group['all'] ?? []) as List)
-            .map((name) => proxies[name])
-            .where((proxy) => proxy != null)
-            .toList();
-        return group;
-      })
-      .toList();
-  final groups = groupsRaw.map((e) => Group.fromJson(e)).toList();
+  final groups = <Group>[];
+  for (final groupName in all) {
+    final raw = proxies[groupName];
+    if (raw is! Map) continue;
+    if (!GroupTypeExtension.valueList.contains(raw['type'])) continue;
+    final memberNames = raw['all'];
+    final group = Map<String, dynamic>.from(raw);
+    group['all'] = memberNames is List
+        ? memberNames.map((name) => proxies[name]).nonNulls.toList()
+        : const [];
+    groups.add(Group.fromJson(group));
+  }
   return computeSort(
     groups: groups,
     sortType: sortType,
@@ -82,16 +83,16 @@ Future<List<Group>> _toGroupsTask(ComputeGroupsState state) async {
   );
 }
 
-Future<VM2<String, String>> makeRealProfileTask(
+Future<({String yaml, String md5})> makeRealProfileTask(
   MakeRealProfileState data,
 ) async {
-  return compute<MakeRealProfileState, VM2<String, String>>(
+  return compute<MakeRealProfileState, ({String yaml, String md5})>(
     _makeRealProfileTask,
     data,
   );
 }
 
-Future<VM2<String, String>> _makeRealProfileTask(
+Future<({String yaml, String md5})> _makeRealProfileTask(
   MakeRealProfileState data,
 ) async {
   final rawConfig = Map.from(data.rawConfig);
@@ -268,28 +269,50 @@ Future<VM2<String, String>> _makeRealProfileTask(
   }
   rawConfig['rules'] = rules;
   final yaml = await _encodeYaml(Map<String, dynamic>.from(rawConfig));
-  return VM2(yaml, yaml.toMd5());
+  return (yaml: yaml, md5: yaml.toMd5());
 }
 
 Future<List<String>> shakingProfileTask(
-  VM2<Iterable<int>, Iterable<int>> data,
+  ({Iterable<int> profileIds, Iterable<int> scriptIds}) data,
 ) async {
   return compute<
-    VM3<Iterable<int>, Iterable<int>, RootIsolateToken>,
+    ({
+      Iterable<int> profileIds,
+      Iterable<int> scriptIds,
+      RootIsolateToken token,
+    }),
     List<String>
-  >(_shakingProfileTask, VM3(data.a, data.b, RootIsolateToken.instance!));
+  >(_shakingProfileTask, (
+    profileIds: data.profileIds,
+    scriptIds: data.scriptIds,
+    token: RootIsolateToken.instance!,
+  ));
 }
 
 Future<List<String>> _shakingProfileTask(
-  VM3<Iterable<int>, Iterable<int>, RootIsolateToken> data,
+  ({Iterable<int> profileIds, Iterable<int> scriptIds, RootIsolateToken token})
+  data,
 ) async {
-  final profileIds = data.a;
-  final scriptIds = data.b;
-  final token = data.c;
-  BackgroundIsolateBinaryMessenger.ensureInitialized(token);
-  final profilesDir = Directory(await appPath.profilesPath);
-  final scriptsDir = Directory(await appPath.scriptsDirPath);
-  final providersDir = Directory(await appPath.getProvidersRootPath());
+  BackgroundIsolateBinaryMessenger.ensureInitialized(data.token);
+  return shakeOrphanFiles(
+    profileIds: data.profileIds,
+    scriptIds: data.scriptIds,
+    profilesDirPath: await appPath.profilesPath,
+    providersDirPath: await appPath.getProvidersRootPath(),
+    scriptsDirPath: await appPath.scriptsDirPath,
+  );
+}
+
+/// Lists the profile, provider and script files whose name no longer matches a
+/// live id, i.e. the ones left behind by deleted profiles and scripts.
+@visibleForTesting
+List<String> shakeOrphanFiles({
+  required Iterable<int> profileIds,
+  required Iterable<int> scriptIds,
+  required String profilesDirPath,
+  required String providersDirPath,
+  required String scriptsDirPath,
+}) {
   final List<String> targets = [];
   void scanDirectory(
     Directory dir,
@@ -313,9 +336,13 @@ Future<List<String>> _shakingProfileTask(
     }
   }
 
-  scanDirectory(profilesDir, profileIds, skipProvidersFolder: true);
-  scanDirectory(providersDir, profileIds);
-  scanDirectory(scriptsDir, scriptIds);
+  scanDirectory(
+    Directory(profilesDirPath),
+    profileIds,
+    skipProvidersFolder: true,
+  );
+  scanDirectory(Directory(providersDirPath), profileIds);
+  scanDirectory(Directory(scriptsDirPath), scriptIds);
   return targets;
 }
 
@@ -331,19 +358,34 @@ Future<String> _encodeLogsTask(List<Log> data) async {
 
 Future<MigrationData> oldToNowTask(Map<String, Object?> data) async {
   final homeDir = await appPath.homeDirPath;
-  return compute<VM3<Map<String, Object?>, String, String>, MigrationData>(
-    _oldToNowTask,
-    VM3(data, homeDir, homeDir),
-  );
+  return compute<
+    ({Map<String, Object?> configMap, String sourcePath, String targetPath}),
+    MigrationData
+  >(_oldToNowTask, (configMap: data, sourcePath: homeDir, targetPath: homeDir));
 }
 
 Future<MigrationData> _oldToNowTask(
-  VM3<Map<String, Object?>, String, String> data,
-) async {
-  final configMap = data.a;
-  final sourcePath = data.b;
-  final targetPath = data.c;
+  ({Map<String, Object?> configMap, String sourcePath, String targetPath}) data,
+) {
+  return migrateLegacyConfig(
+    configMap: data.configMap,
+    sourcePath: data.sourcePath,
+    targetPath: data.targetPath,
+  );
+}
 
+/// Rewrites a pre-database config document into the rows the current schema
+/// expects, copying the profile and script files it references from
+/// [sourcePath] into [targetPath] along the way.
+///
+/// Legacy ids are strings; every one of them is remapped to a fresh snowflake
+/// id through a shared table so cross-references keep pointing at the same row.
+@visibleForTesting
+Future<MigrationData> migrateLegacyConfig({
+  required Map<String, Object?> configMap,
+  required String sourcePath,
+  required String targetPath,
+}) async {
   final accessControlMap = configMap['accessControl'];
   final isAccessControl = configMap['isAccessControl'];
   if (accessControlMap != null) {
@@ -364,9 +406,6 @@ Future<MigrationData> _oldToNowTask(
   configMap['appSettingProps'] = appSettingProps;
   configMap['proxiesStyleProps'] = configMap['proxiesStyle'];
   configMap['proxiesStyleProps'] = configMap['proxiesStyle'];
-  // final overwriteMap = configMap['overwrite'] as Map? ?? {};
-  // configMap['overwriteType'] = overwriteMap['type'];
-  // configMap['scriptId'] = overwriteMap['scriptOverwrite'];
   List rawScripts = configMap['scripts'] as List<dynamic>? ?? [];
   if (rawScripts.isEmpty) {
     final scriptPropsJson = configMap['scriptProps'] as Map<String, dynamic>?;
@@ -474,60 +513,84 @@ Future<String> backupTask(
   Iterable<String> fileNames,
 ) async {
   return compute<
-    VM3<Map<String, dynamic>, Iterable<String>, RootIsolateToken>,
+    ({
+      Map<String, dynamic> configMap,
+      Iterable<String> fileNames,
+      RootIsolateToken token,
+    }),
     String
-  >(_backupTask, VM3(configMap, fileNames, RootIsolateToken.instance!));
+  >(_backupTask, (
+    configMap: configMap,
+    fileNames: fileNames,
+    token: RootIsolateToken.instance!,
+  ));
 }
 
 Future<String> _backupTask<T>(
-  VM3<Map<String, dynamic>, Iterable<String>, RootIsolateToken> args,
+  ({
+    Map<String, dynamic> configMap,
+    Iterable<String> fileNames,
+    RootIsolateToken token,
+  })
+  args,
 ) async {
-  final configMap = args.a;
-  final fileNames = args.b;
-  final token = args.c;
-  BackgroundIsolateBinaryMessenger.ensureInitialized(token);
-  final dbPath = await appPath.databasePath;
+  BackgroundIsolateBinaryMessenger.ensureInitialized(args.token);
+  return writeBackupArchive(
+    configMap: args.configMap,
+    fileNames: args.fileNames,
+    databasePath: await appPath.databasePath,
+    profilesDirPath: await appPath.profilesPath,
+    scriptsDirPath: await appPath.scriptsDirPath,
+    zipFilePath: await appPath.tempFilePath,
+    tempDatabasePath: await appPath.tempFilePath,
+    tempConfigPath: await appPath.tempFilePath,
+  );
+}
+
+/// Zips the database, the encoded [configMap] and every profile or script whose
+/// file name is listed in [fileNames], and returns the archive path.
+@visibleForTesting
+Future<String> writeBackupArchive({
+  required Map<String, dynamic> configMap,
+  required Iterable<String> fileNames,
+  required String databasePath,
+  required String profilesDirPath,
+  required String scriptsDirPath,
+  required String zipFilePath,
+  required String tempDatabasePath,
+  required String tempConfigPath,
+}) async {
   final configStr = json.encode(configMap);
-  final profilesDir = Directory(await appPath.profilesPath);
-  final scriptsDir = Directory(await appPath.scriptsDirPath);
-  final tempZipFilePath = await appPath.tempFilePath;
-  final tempDBFile = File(await appPath.tempFilePath);
-  final tempConfigFile = File(await appPath.tempFilePath);
-  final dbFile = File(dbPath);
+  final profilesDir = Directory(profilesDirPath);
+  final scriptsDir = Directory(scriptsDirPath);
+  final tempDBFile = File(tempDatabasePath);
+  final tempConfigFile = File(tempConfigPath);
+  final dbFile = File(databasePath);
   if (await dbFile.exists()) {
     await dbFile.copy(tempDBFile.path);
   }
   final encoder = ZipFileEncoder();
-  encoder.create(tempZipFilePath);
+  encoder.create(zipFilePath);
   await tempConfigFile.writeAsString(configStr);
   await encoder.addFile(tempDBFile, backupDatabaseName);
   await encoder.addFile(tempConfigFile, configJsonName);
+  ZipFileOperation keepListed(FileSystemEntity entity, double _) {
+    if (!fileNames.contains(basename(entity.path))) {
+      return ZipFileOperation.skip;
+    }
+    return ZipFileOperation.include;
+  }
+
   if (await profilesDir.exists()) {
-    await encoder.addDirectory(
-      profilesDir,
-      filter: (file, _) {
-        if (!fileNames.contains(basename(file.path))) {
-          return ZipFileOperation.skip;
-        }
-        return ZipFileOperation.include;
-      },
-    );
+    await encoder.addDirectory(profilesDir, filter: keepListed);
   }
   if (await scriptsDir.exists()) {
-    await encoder.addDirectory(
-      scriptsDir,
-      filter: (file, _) {
-        if (!fileNames.contains(basename(file.path))) {
-          return ZipFileOperation.skip;
-        }
-        return ZipFileOperation.include;
-      },
-    );
+    await encoder.addDirectory(scriptsDir, filter: keepListed);
   }
-  encoder.close();
+  unawaited(encoder.close());
   await tempConfigFile.safeDelete();
   await tempDBFile.safeDelete();
-  return tempZipFilePath;
+  return zipFilePath;
 }
 
 Future<MigrationData> restoreTask() async {
@@ -539,9 +602,25 @@ Future<MigrationData> restoreTask() async {
 
 Future<MigrationData> _restoreTask(RootIsolateToken token) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(token);
-  final backupFilePath = await appPath.backupFilePath;
-  final restoreDirPath = await appPath.restoreDirPath;
-  final homeDirPath = await appPath.homeDirPath;
+  return readBackupArchive(
+    backupFilePath: await appPath.backupFilePath,
+    restoreDirPath: await appPath.restoreDirPath,
+    homeDirPath: await appPath.homeDirPath,
+  );
+}
+
+/// Unpacks the archive at [backupFilePath] into [restoreDirPath], copies the
+/// profiles and scripts it carries into [homeDirPath] and returns the rows the
+/// caller has to write back.
+///
+/// A version-0 archive predates the database and is handed to
+/// [migrateLegacyConfig] instead.
+@visibleForTesting
+Future<MigrationData> readBackupArchive({
+  required String backupFilePath,
+  required String restoreDirPath,
+  required String homeDirPath,
+}) async {
   final zipDecoder = ZipDecoder();
   final input = InputFileStream(backupFilePath);
   final archive = zipDecoder.decodeStream(input);
@@ -556,7 +635,7 @@ Future<MigrationData> _restoreTask(RootIsolateToken token) async {
   await input.close();
   final restoreConfigFile = File(join(restoreDirPath, configJsonName));
   if (!await restoreConfigFile.exists()) {
-    throw currentAppLocalizations.invalidBackupFile;
+    throw MessageException(currentAppLocalizations.invalidBackupFile);
   }
   final restoreConfigMap =
       json.decode(await restoreConfigFile.readAsString())
@@ -564,8 +643,10 @@ Future<MigrationData> _restoreTask(RootIsolateToken token) async {
   final version = restoreConfigMap?['version'] ?? 0;
   MigrationData migrationData = MigrationData(configMap: restoreConfigMap);
   if (version == 0 && restoreConfigMap != null) {
-    migrationData = await _oldToNowTask(
-      VM3(restoreConfigMap, restoreDirPath, homeDirPath),
+    migrationData = await migrateLegacyConfig(
+      configMap: restoreConfigMap,
+      sourcePath: restoreDirPath,
+      targetPath: homeDirPath,
     );
     return migrationData;
   }
@@ -591,15 +672,15 @@ Future<MigrationData> _restoreTask(RootIsolateToken token) async {
   final profiles = results[0].cast<Profile>();
   final scripts = results[1].cast<Script>();
   final profilesMigration = profiles.map(
-    (item) => VM2(
-      _getProfilePath(restoreDirPath, item.id.toString()),
-      _getProfilePath(homeDirPath, item.id.toString()),
+    (item) => (
+      from: _getProfilePath(restoreDirPath, item.id.toString()),
+      to: _getProfilePath(homeDirPath, item.id.toString()),
     ),
   );
   final scriptsMigration = scripts.map(
-    (item) => VM2(
-      _getScriptPath(restoreDirPath, item.id.toString()),
-      _getScriptPath(homeDirPath, item.id.toString()),
+    (item) => (
+      from: _getScriptPath(restoreDirPath, item.id.toString()),
+      to: _getScriptPath(homeDirPath, item.id.toString()),
     ),
   );
   await _copyWithMapList([...profilesMigration, ...scriptsMigration]);
@@ -614,9 +695,11 @@ Future<MigrationData> _restoreTask(RootIsolateToken token) async {
   return migrationData;
 }
 
-Future<void> _copyWithMapList(List<VM2<String, String>> copyMapList) async {
+Future<void> _copyWithMapList(
+  List<({String from, String to})> copyMapList,
+) async {
   await Future.wait(
-    copyMapList.map((item) => File(item.a).safeCopy(item.b)).toList(),
+    copyMapList.map((item) => File(item.from).safeCopy(item.to)).toList(),
   );
 }
 
@@ -629,14 +712,14 @@ String _getProfilePath(String root, String fileName) {
 }
 
 Future<List<T>> mapListTask<T, S>(List<S> results, T Function(S) mapper) async {
-  return compute<VM2<List<S>, T Function(S)>, List<T>>(
+  return compute<({List<S> results, T Function(S) mapper}), List<T>>(
     _mapListTask,
-    VM2(results, mapper),
+    (results: results, mapper: mapper),
   );
 }
 
-Future<List<T>> _mapListTask<T, S>(VM2<List<S>, T Function(S)> vm2) async {
-  final results = vm2.a;
-  final mapper = vm2.b;
-  return results.map((item) => mapper(item)).toList();
+Future<List<T>> _mapListTask<T, S>(
+  ({List<S> results, T Function(S) mapper}) args,
+) async {
+  return args.results.map((item) => args.mapper(item)).toList();
 }

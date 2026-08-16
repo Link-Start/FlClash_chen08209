@@ -20,6 +20,7 @@ import androidx.core.net.toUri
 import com.follow.clash.R
 import com.follow.clash.common.Components
 import com.follow.clash.common.GlobalState
+import com.follow.clash.common.PendingCallback
 import com.follow.clash.common.QuickAction
 import com.follow.clash.common.quickIntent
 import com.follow.clash.getPackageIconPath
@@ -46,9 +47,9 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
 
     private lateinit var scope: CoroutineScope
 
-    private var vpnPrepareCallback: ((Boolean) -> Unit)? = null
+    private val vpnPrepareCallback = PendingCallback<Boolean>()
 
-    private var requestNotificationCallback: ((Boolean) -> Unit)? = null
+    private val requestNotificationCallback = PendingCallback<Boolean>()
 
     private var isRequestingNotificationPermission = false
 
@@ -208,8 +209,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
     }
 
     fun requestNotificationPermission(callback: (Boolean) -> Unit) {
-        requestNotificationCallback?.invoke(false)
-        requestNotificationCallback = callback
+        requestNotificationCallback.replace(callback, supersededValue = false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permission = ContextCompat.checkSelfPermission(
                 GlobalState.application,
@@ -237,13 +237,11 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
 
     private fun invokeRequestNotificationCallback(shouldStart: Boolean) {
         isRequestingNotificationPermission = false
-        requestNotificationCallback?.invoke(shouldStart)
-        requestNotificationCallback = null
+        requestNotificationCallback.resolve(shouldStart)
     }
 
     fun prepareVpn(needPrepare: Boolean, callback: (Boolean) -> Unit) {
-        invokeVpnPrepareCallback(false)
-        vpnPrepareCallback = callback
+        vpnPrepareCallback.replace(callback, supersededValue = false)
         if (!needPrepare) {
             invokeVpnPrepareCallback(true)
             return
@@ -263,14 +261,11 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
     }
 
     fun cancelVpnPreparation(callback: (Boolean) -> Unit) {
-        if (vpnPrepareCallback === callback) {
-            vpnPrepareCallback = null
-        }
+        vpnPrepareCallback.cancel(callback)
     }
 
     private fun invokeVpnPrepareCallback(granted: Boolean) {
-        vpnPrepareCallback?.invoke(granted)
-        vpnPrepareCallback = null
+        vpnPrepareCallback.resolve(granted)
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {

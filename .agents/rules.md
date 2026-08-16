@@ -17,6 +17,18 @@ individual `analysis_options.yaml`; those files carry only their own `analyzer.e
 - `prefer_const_constructors: true` and `prefer_const_declarations: true`.
 - `prefer_final_locals: true` and `prefer_final_in_for_each: true`.
 - `always_declare_return_types: true`.
+- `only_throw_errors: true`: throw an `Exception` or `Error`, never a bare `String`.
+
+Failures whose whole content is a message meant for the user throw
+`MessageException` from `lib/common/exception.dart`. Its `toString()` is the bare
+message, which is what `globalState.safeRun` surfaces in the dialog, so the
+user-facing text is unchanged from the older `throw someMessage` idiom while the
+throw stays catchable as an `Exception` and carries a stack trace. Assert on it
+with `isA<MessageException>().having((e) => e.message, 'message', ...)`, not on a
+raw string.
+
+CI gates formatting: `dart format --output=none --set-exit-if-changed lib test
+tool plugins setup.dart` runs before `flutter analyze`.
 
 Generated directories are excluded from analysis:
 
@@ -122,6 +134,28 @@ land.
 Prefer `coreHandlerProvider.overrideWithValue(CoreController.scoped(fake))` over `CoreController.test(fake)` in new and
 touched tests. `CoreController.test` claims the process-wide singleton, which makes a global read and a provider read
 resolve to the same fake, so it cannot fail on a call site that still reaches for the global.
+
+Construct the Android lib handler with `CoreLib.scoped(fakeService)`. The `service` global is gated on `Platform.isAndroid`
+and is therefore null on every test host, so a `CoreLib()` built from it silently takes the null-service fallback on every
+path. `CoreLib.scoped` binds an explicit `Service` instead; reset the singleton with `CoreLib.resetInstance()` in `tearDown`.
+
+`system.isAndroid` / `isMacOS` / `isWindows` / `isLinux` read `dart:io` `Platform` and cannot be overridden, unlike
+`debugDefaultTargetPlatformOverride`. A branch behind one of them is only ever exercised on a host that matches it, so CI
+(`ubuntu-latest`) and a macOS working copy measure different coverage for the same test. Assert host-agnostic behavior,
+and leave headroom under a group floor that covers such a branch.
+
+Auto-dispose providers need a container-level hold before a test reads them back. `proxyGroupProvider`, `ruleProvider`,
+`itemsProvider` and friends mix in `AutoDisposeNotifierMixin`, so a `container.read` that no widget is currently watching
+rebuilds the provider from its override and silently discards whatever the code under test wrote. Add
+`container.listen(theProvider, (_, _) {})` in the harness, as `overwrite_stage_flow_test.dart` does. The staging flow also
+re-arms its debounce when it clears the stage, so drain it (`pump` past the duration, then unmount) or the binding fails
+the test on a pending timer.
+
+A `State.dispose()` override must not await before `super.dispose()`. `StatefulElement.unmount` calls `dispose()` and then
+immediately asserts that `super.dispose()` already ran, so an `await` defers the call past the assert and every teardown
+throws "`…State.dispose failed to call super.dispose.`" in debug and profile builds. Declare the override as `void
+dispose()` and hand async teardown to `unawaited(...)`; `Future<void> dispose() async` compiles and is the shape that
+invites the bug.
 
 Use `ProviderContainer` directly for simple Riverpod provider tests. The generated Riverpod `update()` method takes a callback:
 

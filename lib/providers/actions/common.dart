@@ -114,16 +114,22 @@ class CommonAction extends _$CommonAction {
         cancelText: isUser ? null : currentAppLocalizations.noLongerRemind,
       );
       if (res == true) {
-        launchUrl(Uri.parse('https://github.com/$repository/releases/latest'));
+        unawaited(
+          launchUrl(
+            Uri.parse('https://github.com/$repository/releases/latest'),
+          ),
+        );
       } else if (!isUser && res == false) {
         ref
             .read(appSettingProvider.notifier)
             .update((state) => state.copyWith(autoCheckUpdate: false));
       }
     } else if (isUser) {
-      dialogs.showMessage(
-        title: currentAppLocalizations.checkUpdate,
-        message: TextSpan(text: currentAppLocalizations.checkUpdateError),
+      unawaited(
+        dialogs.showMessage(
+          title: currentAppLocalizations.checkUpdate,
+          message: TextSpan(text: currentAppLocalizations.checkUpdateError),
+        ),
       );
     }
   }

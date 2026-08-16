@@ -93,7 +93,7 @@ final class LogsProvider extends $NotifierProvider<Logs, FixedList<Log>> {
   }
 }
 
-String _$logsHash() => r'2f10830d8a103688a59afce45ab6c52a82f38ca2';
+String _$logsHash() => r'332f8d753954ba13997fadc3be5e7265468e710e';
 
 abstract class _$Logs extends $Notifier<FixedList<Log>> {
   FixedList<Log> build();
@@ -145,7 +145,7 @@ final class RequestsProvider
   }
 }
 
-String _$requestsHash() => r'32e4f0141a66b27732f8156a55a6fb23d74cfc07';
+String _$requestsHash() => r'30c60e10c2e2eab369f38ffc6e284ca5b96358ba';
 
 abstract class _$Requests extends $Notifier<FixedList<TrackerInfo>> {
   FixedList<TrackerInfo> build();
@@ -198,7 +198,7 @@ final class ProvidersProvider
   }
 }
 
-String _$providersHash() => r'21b9ada05ede3e9097621e2e5b10800e40ba7098';
+String _$providersHash() => r'51d9bc898e1af8a7179c1c53145705b57d9a5996';
 
 abstract class _$Providers extends $Notifier<List<ExternalProvider>> {
   List<ExternalProvider> build();
@@ -355,7 +355,7 @@ final class TrafficsProvider
   }
 }
 
-String _$trafficsHash() => r'00b83d393175b51abcef277417fb3d9b70cc247f';
+String _$trafficsHash() => r'4c5875a1c8b68af1e9e2509bd2f73432e3407793';
 
 abstract class _$Traffics extends $Notifier<FixedList<Traffic>> {
   FixedList<Traffic> build();
@@ -711,7 +711,7 @@ final class ViewModeProvider
   }
 }
 
-String _$viewModeHash() => r'6822e9dc28c813afe1ed743feea464f0d33c805c';
+String _$viewModeHash() => r'56f81d519e3835bddef4a3905182991169c17619';
 
 @ProviderFor(isMobileView)
 final isMobileViewProvider = IsMobileViewProvider._();

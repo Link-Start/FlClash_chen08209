@@ -42,22 +42,6 @@ class ThemeManager extends ConsumerWidget {
     );
   }
 
-  // _buildScrollbar(Widget child) {
-  //   return Consumer(
-  //     builder: (_, ref, child) {
-  //       final isMobileView = ref.read(isMobileViewProvider);
-  //       if (isMobileView) {
-  //         return ScrollConfiguration(
-  //           behavior: HiddenBarScrollBehavior(),
-  //           child: child!,
-  //         );
-  //       }
-  //       return child!;
-  //     },
-  //     child: child,
-  //   );
-  // }
-
   @override
   Widget build(BuildContext context, ref) {
     final textScale = ref.read(
@@ -93,7 +77,7 @@ class ThemeManager extends ConsumerWidget {
         ),
         child: LayoutBuilder(
           builder: (_, constraints) {
-            globalState.container
+            ref
                 .read(themeActionProvider.notifier)
                 .updateViewSize(
                   Size(constraints.maxWidth, constraints.maxHeight),

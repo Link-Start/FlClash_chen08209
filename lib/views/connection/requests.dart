@@ -20,7 +20,6 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
   final _requestsStateNotifier = ValueNotifier<TrackerInfosState>(
     const TrackerInfosState(),
   );
-  List<TrackerInfo> _requests = [];
   late final ScrollController _scrollController;
 
   void _onSearch(String value) {
@@ -38,16 +37,17 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
   @override
   void initState() {
     super.initState();
-    _requests = ref.read(requestsProvider).list;
     _scrollController = ScrollController(initialScrollOffset: double.maxFinite);
     _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
-      trackerInfos: _requests,
+      trackerInfos: ref.read(requestsProvider).list,
     );
-    ref.listenManual(requestsProvider.select((state) => VM(state.list)), (
-      prev,
-      next,
+    // Watching the generation rather than the list keeps arrival O(1); the
+    // snapshot and the comparison happen once per throttle window instead of
+    // once per request.
+    ref.listenManual(requestsProvider.select((state) => state.revision), (
+      _,
+      _,
     ) {
-      _requests = next.a;
       updateRequestsThrottler();
     });
   }
@@ -64,8 +64,9 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
       if (!mounted) {
         return;
       }
+      final requests = ref.read(requestsProvider).list;
       final isEquality = trackerInfoListEquality.equals(
-        _requests,
+        requests,
         _requestsStateNotifier.value.trackerInfos,
       );
       if (isEquality) {
@@ -74,7 +75,7 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
-            trackerInfos: _requests,
+            trackerInfos: requests,
           );
         }
       });
@@ -118,21 +119,6 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
               label: appLocalizations.nullTip(appLocalizations.requests),
             );
           }
-          final items = requests
-              .map<Widget>(
-                (trackerInfo) => TrackerInfoItem(
-                  key: Key(trackerInfo.id),
-                  trackerInfo: trackerInfo,
-                  onClickKeyword: (value) {
-                    context.commonScaffoldState?.addKeyword(value);
-                  },
-                  detailTitle: appLocalizations.details(
-                    appLocalizations.request,
-                  ),
-                ),
-              )
-              .separated(const Divider(height: 0))
-              .toList();
           return Align(
             alignment: Alignment.topCenter,
             child: CommonScrollBar(
@@ -146,15 +132,26 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
                   _requestsStateNotifier.value = _requestsStateNotifier.value
                       .copyWith(autoScrollToEnd: false);
                 },
-                child: SuperListView.builder(
+                child: SuperListView.separated(
                   reverse: true,
                   shrinkWrap: true,
                   physics: const NextClampingScrollPhysics(),
                   controller: _scrollController,
+                  itemCount: requests.length,
+                  separatorBuilder: (_, _) => const Divider(height: 0),
                   itemBuilder: (_, index) {
-                    return items[index];
+                    final trackerInfo = requests[index];
+                    return TrackerInfoItem(
+                      key: Key(trackerInfo.id),
+                      trackerInfo: trackerInfo,
+                      onClickKeyword: (value) {
+                        context.commonScaffoldState?.addKeyword(value);
+                      },
+                      detailTitle: appLocalizations.details(
+                        appLocalizations.request,
+                      ),
+                    );
                   },
-                  itemCount: items.length,
                 ),
               ),
             ),

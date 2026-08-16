@@ -4,6 +4,7 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'desktop/model.dart';
 import 'interface.dart';
@@ -12,13 +13,25 @@ import 'method.dart';
 class CoreLib extends CoreHandlerInterface {
   static CoreLib? _instance;
 
+  final Service? _service;
+
   Completer<bool> _connectedCompleter = Completer<bool>();
   Future<CoreLifecycleResult>? _closeOperation;
   int _lifecycleRevision = 0;
   int _methodCallId = 0;
   bool _closed = false;
 
-  CoreLib._internal();
+  CoreLib._internal() : _service = service;
+
+  /// A lib handler bound to an explicit service instead of the Android-gated
+  /// global, and not published as the process-wide instance.
+  @visibleForTesting
+  CoreLib.scoped(Service this._service);
+
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = null;
+  }
 
   factory CoreLib() {
     _instance ??= CoreLib._internal();
@@ -37,19 +50,19 @@ class CoreLib extends CoreHandlerInterface {
         outcome: CoreLifecycleOutcome.coalesced,
       );
     }
-    final initializationError = await service?.init() ?? '';
+    final initializationError = await _service?.init() ?? '';
     if (initializationError.isNotEmpty) {
       throw StateError(initializationError);
     }
     _connectedCompleter.complete(true);
     final syncError =
-        await service?.syncState(
+        await _service?.syncState(
           globalState.container.read(sharedStateProvider),
         ) ??
         '';
     if (syncError.isNotEmpty) {
       _connectedCompleter = Completer<bool>();
-      await service?.shutdown();
+      await _service?.shutdown();
       throw StateError(syncError);
     }
     return CoreLifecycleResult(
@@ -79,7 +92,7 @@ class CoreLib extends CoreHandlerInterface {
       );
     }
     _connectedCompleter = Completer<bool>();
-    final stopped = await service?.shutdown() ?? true;
+    final stopped = await _service?.shutdown() ?? true;
     if (!stopped) {
       throw StateError('Android Core service shutdown failed');
     }
@@ -102,13 +115,13 @@ class CoreLib extends CoreHandlerInterface {
   @override
   Future<bool> startListener() async {
     final listenerStarted = await super.startListener();
-    final serviceStarted = await service?.start() ?? false;
+    final serviceStarted = await _service?.start() ?? false;
     return listenerStarted && serviceStarted;
   }
 
   @override
   Future<bool> stopListener() async {
-    final serviceStopped = await service?.stop() ?? false;
+    final serviceStopped = await _service?.stop() ?? false;
     final listenerStopped = await super.stopListener();
     return serviceStopped && listenerStopped;
   }
@@ -129,7 +142,7 @@ class CoreLib extends CoreHandlerInterface {
       return null;
     }
     final id = '${++_methodCallId}';
-    final response = await service
+    final response = await _service
         ?.invokeMethod(
           CoreMethodCall(id: id, method: method, arguments: arguments),
         )

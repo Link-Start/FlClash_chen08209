@@ -23,7 +23,6 @@ class _AccessViewState extends ConsumerState<AccessView> {
   late ScrollController _controller;
   List<String>? _pinedList;
   bool _isInit = false;
-  AccessControlMode? _lastMode;
 
   final _completer = Completer();
 
@@ -36,8 +35,29 @@ class _AccessViewState extends ConsumerState<AccessView> {
         .read(vpnSettingProvider.select((state) => state.accessControlProps))
         .copyWith();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
       ref.read(accessControlStateProvider.notifier).value = accessControl;
       _isInit = true;
+      _pinList();
+    });
+    ref.listenManual(
+      accessControlStateProvider.select((state) => state.mode),
+      (_, _) => _pinList(),
+    );
+  }
+
+  // Which apps sit at the top of the list is fixed at the moment the mode or
+  // the query changes, so that toggling an app does not make the row jump out
+  // from under the tap. Recomputed here rather than in build, which has to stay
+  // free to run again without moving anything.
+  void _pinList() {
+    if (!_isInit || !mounted) {
+      return;
+    }
+    setState(() {
+      _pinedList = ref.read(accessControlStateProvider).currentList;
     });
   }
 
@@ -144,7 +164,7 @@ class _AccessViewState extends ConsumerState<AccessView> {
 
   Future<void> _handleBack() async {
     final appLocalizations = context.appLocalizations;
-    final res = await globalState.showMessage(
+    final res = await dialogs.showMessage(
       title: appLocalizations.tip,
       message: TextSpan(text: appLocalizations.saveChanges),
     );
@@ -375,7 +395,7 @@ class _AccessViewState extends ConsumerState<AccessView> {
 
   void _onSearch(String value) {
     ref.read(queryProvider(QueryTag.access).notifier).value = value;
-    _pinedList = null;
+    _pinList();
   }
 
   @override
@@ -384,14 +404,6 @@ class _AccessViewState extends ConsumerState<AccessView> {
     final query = ref.watch(queryProvider(QueryTag.access));
     final packages = ref.watch(packagesProvider);
     final accessControl = ref.watch(accessControlStateProvider);
-    if (_isInit) {
-      if (_lastMode != accessControl.mode) {
-        _lastMode = accessControl.mode;
-        _pinedList = accessControl.currentList;
-      } else {
-        _pinedList ??= accessControl.currentList;
-      }
-    }
     final viewPackages = packages
         .getViewList(
           pinedList: _pinedList ?? [],
@@ -454,25 +466,7 @@ class PackageListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListItem.checkbox(
-      leading: SizedBox(
-        width: 48,
-        height: 48,
-        child: FutureBuilder<ImageProvider?>(
-          future: app?.getPackageIcon(package.packageName),
-          builder: (_, snapshot) {
-            if (!snapshot.hasData && snapshot.data == null) {
-              return Container();
-            } else {
-              return Image(
-                image: snapshot.data!,
-                gaplessPlayback: true,
-                width: 48,
-                height: 48,
-              );
-            }
-          },
-        ),
-      ),
+      leading: PackageIcon(packageName: package.packageName, size: 48),
       title: Text(
         package.label,
         style: const TextStyle(overflow: TextOverflow.ellipsis),
@@ -616,11 +610,11 @@ class _AccessControlPanelState extends ConsumerState<AccessControlPanel> {
           scrollDirection: Axis.horizontal,
           child: Consumer(
             builder: (_, ref, _) {
-              final vm2 = ref.watch(
+              final filters = ref.watch(
                 accessControlStateProvider.select(
-                  (state) => VM2(
-                    state.isFilterSystemApp,
-                    state.isFilterNonInternetApp,
+                  (state) => (
+                    filterSystemApp: state.isFilterSystemApp,
+                    filterNonInternetApp: state.isFilterNonInternetApp,
                   ),
                 ),
               );
@@ -629,25 +623,28 @@ class _AccessControlPanelState extends ConsumerState<AccessControlPanel> {
                 children: [
                   SettingTextCard(
                     appLocalizations.systemApp,
-                    isSelected: vm2.a == false,
+                    isSelected: filters.filterSystemApp == false,
                     onPressed: () {
                       ref
                           .read(accessControlStateProvider.notifier)
                           .update(
-                            (state) =>
-                                state.copyWith(isFilterSystemApp: !vm2.a),
+                            (state) => state.copyWith(
+                              isFilterSystemApp: !filters.filterSystemApp,
+                            ),
                           );
                     },
                   ),
                   SettingTextCard(
                     appLocalizations.noNetworkApp,
-                    isSelected: vm2.b == false,
+                    isSelected: filters.filterNonInternetApp == false,
                     onPressed: () {
                       ref
                           .read(accessControlStateProvider.notifier)
                           .update(
-                            (state) =>
-                                state.copyWith(isFilterNonInternetApp: !vm2.b),
+                            (state) => state.copyWith(
+                              isFilterNonInternetApp:
+                                  !filters.filterNonInternetApp,
+                            ),
                           );
                     },
                   ),

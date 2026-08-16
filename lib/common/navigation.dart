@@ -1,11 +1,13 @@
+import 'package:fl_clash/common/app_ports.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/views/views.dart';
 import 'package:flutter/material.dart';
 
-class Navigation {
+class Navigation implements NavigationPort {
   static Navigation? _instance;
 
+  @override
   List<NavigationItem> getItems({
     bool openLogs = false,
     bool hasProxies = false,

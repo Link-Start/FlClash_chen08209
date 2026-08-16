@@ -8,6 +8,7 @@ import 'package:drift/native.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 part 'converter.dart';
 part 'generated/database.g.dart';
@@ -52,13 +53,6 @@ class Database extends _$Database {
           await _resetOrders();
           await _migrateRules(m);
         }
-      },
-      beforeOpen: (details) async {
-        // final m = Migrator(this);
-        // await m.createTable(iconRecords);
-        // await _migrateRules(m);
-        // await m.deleteTable('proxy_groups');
-        // await m.createTable(proxyGroups);
       },
     );
   }
@@ -125,7 +119,8 @@ class Database extends _$Database {
     if (profiles.isNotEmpty ||
         scripts.isNotEmpty ||
         rules.isNotEmpty ||
-        links.isNotEmpty) {
+        links.isNotEmpty ||
+        proxyGroups.isNotEmpty) {
       await batch((b) {
         isOverride
             ? profilesDao.setAllWithBatch(b, profiles)
@@ -201,4 +196,14 @@ extension JoinedSelectStatementExt<T extends HasResultSet, D>
   }
 }
 
-final database = Database();
+Database _database = Database();
+
+/// The process-wide database handle.
+///
+/// Lazily opens the on-disk file on first use. Tests swap in an in-memory
+/// executor through the setter so the provider layer can be exercised without
+/// touching the real database file.
+Database get database => _database;
+
+@visibleForTesting
+set database(Database value) => _database = value;

@@ -74,7 +74,7 @@ class _NetworkDetectionState extends ConsumerState<NetworkDetection> {
                     child: IconButton(
                       padding: EdgeInsets.zero,
                       onPressed: () {
-                        globalState.showMessage(
+                        dialogs.showMessage(
                           title: appLocalizations.tip,
                           message: TextSpan(
                             text: appLocalizations.detectionTip,

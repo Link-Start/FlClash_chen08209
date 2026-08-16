@@ -11,6 +11,8 @@ class _RunRequest {
 
 @Riverpod(keepAlive: true)
 class SetupAction extends _$SetupAction {
+  CoreController get _core => ref.read(coreHandlerProvider);
+
   Timer? _runtimeTimer;
   final _setupScheduler = SerialTaskScheduler();
   final _listenerScheduler = SerialTaskScheduler();
@@ -20,7 +22,12 @@ class SetupAction extends _$SetupAction {
   bool get _isRunning => _startTime != null && _startTime!.isBeforeNow;
 
   @override
-  void build() {}
+  void build() {
+    ref.onDispose(() {
+      _runtimeTimer?.cancel();
+      _runtimeTimer = null;
+    });
+  }
 
   SetupParams get _setupParams {
     final selectedMap = ref.read(selectedMapProvider);
@@ -159,14 +166,12 @@ class SetupAction extends _$SetupAction {
 
   @protected
   Future<bool> setCoreRunning(bool running) {
-    return running
-        ? coreController.startListener()
-        : coreController.stopListener();
+    return running ? _core.startListener() : _core.stopListener();
   }
 
   @protected
   void resetCoreTraffic() {
-    coreController.resetTraffic();
+    _core.resetTraffic();
   }
 
   @visibleForTesting
@@ -178,13 +183,13 @@ class SetupAction extends _$SetupAction {
         await _restartCoreAfterAuthorization();
         return;
       }
-      final message = await coreController.updateConfig(
+      final message = await _core.updateConfig(
         updateParams.copyWith.tun(
           enable: _getEffectiveTunEnable(updateParams.tun.enable),
         ),
       );
       ref.read(checkIpNumProvider.notifier).add();
-      if (message.isNotEmpty) throw message;
+      if (message.isNotEmpty) throw MessageException(message);
     });
   }
 
@@ -266,22 +271,25 @@ class SetupAction extends _$SetupAction {
     }
   }
 
-  Future<VM2<String, String>> getProfile({
+  Future<({String yaml, String md5})> getProfile({
     required SetupState setupState,
     required PatchClashConfig patchConfig,
   }) async {
     final profileId = setupState.profileId;
-    if (profileId == null) return const VM2('', '');
+    if (profileId == null) return (yaml: '', md5: '');
     final defaultUA = globalState.packageInfo.ua;
-    final networkVM2 = ref.read(
+    final networkSetting = ref.read(
       networkSettingProvider.select(
-        (state) => VM2(state.appendSystemDns, state.routeMode),
+        (state) => (
+          appendSystemDns: state.appendSystemDns,
+          routeMode: state.routeMode,
+        ),
       ),
     );
     final overrideDns = ref.read(overrideDnsProvider);
-    final appendSystemDns = networkVM2.a;
-    final routeMode = networkVM2.b;
-    final configMap = await coreController.getConfig(profileId);
+    final appendSystemDns = networkSetting.appendSystemDns;
+    final routeMode = networkSetting.routeMode;
+    final configMap = await _core.getConfig(profileId);
     String? scriptContent;
     final List<Rule> addedRules = [];
     final List<ProxyGroup> proxyGroups = [];
@@ -327,9 +335,9 @@ class SetupAction extends _$SetupAction {
         setupState: setupState,
         patchConfig: patchClashConfig,
       );
-      return res.a;
+      return res.yaml;
     } catch (e) {
-      globalState.showNotifier(e.toString());
+      dialogs.showNotifier(e.toString());
     }
     return '';
   }
@@ -380,7 +388,9 @@ class SetupAction extends _$SetupAction {
     FutureOr Function()? onUpdated,
   }) async {
     var profile = ref.read(currentProfileProvider);
-    final nextProfile = await profile?.checkAndUpdateAndCopy();
+    final nextProfile = await profile?.checkAndUpdateAndCopy(
+      validate: (path) => _core.validateConfig(path),
+    );
     if (nextProfile != null) {
       profile = nextProfile;
       ref.read(profilesProvider.notifier).put(nextProfile);
@@ -396,12 +406,12 @@ class SetupAction extends _$SetupAction {
       enable: effectiveTunEnable,
     );
     final setupState = await ref.read(setupStateProvider(profile?.id).future);
-    final vm2 = await getProfile(
+    final realProfile = await getProfile(
       setupState: setupState,
       patchConfig: realPatchConfig,
     );
-    final yamlString = vm2.a;
-    final yamlMd5 = vm2.b;
+    final yamlString = realProfile.yaml;
+    final yamlMd5 = realProfile.md5;
     if (yamlMd5 == globalState.lastConfigMd5 && force == false) {
       return _SetupTaskResult.completed;
     }
@@ -414,12 +424,12 @@ class SetupAction extends _$SetupAction {
       () async {
         final configFilePath = await appPath.configFilePath;
         await File(configFilePath).safeWriteAsString(yamlString);
-        final message = await coreController.setupConfig(
+        final message = await _core.setupConfig(
           params: _setupParams,
           preloadInvoke: preloadInvoke,
         );
         if (message.isNotEmpty && !message.endsWith('is empty')) {
-          throw message;
+          throw MessageException(message);
         }
         globalState.lastConfigMd5 = yamlMd5;
         ref.read(checkIpNumProvider.notifier).add();
