@@ -553,5 +553,10 @@
   "geoSkipped": "{name} はすでに最新です",
   "geoUpdated": "{name} 更新済み",
   "secondsCount": "{count} 秒",
-  "entriesCount": "{count} エントリ"
+  "entriesCount": "{count} エントリ",
+  "changelogBreaking": "重大な変更",
+  "changelogFeatures": "新機能",
+  "changelogFixes": "不具合修正",
+  "changelogPerformance": "パフォーマンス",
+  "changelogReverts": "取り消し"
 }

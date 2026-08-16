@@ -217,6 +217,13 @@ class MessageLookup extends MessageLookupByLibrary {
     "cancelSelectAll": MessageLookupByLibrary.simpleMessage(
       "Cancel select all",
     ),
+    "changelogBreaking": MessageLookupByLibrary.simpleMessage(
+      "Breaking changes",
+    ),
+    "changelogFeatures": MessageLookupByLibrary.simpleMessage("New features"),
+    "changelogFixes": MessageLookupByLibrary.simpleMessage("Bug fixes"),
+    "changelogPerformance": MessageLookupByLibrary.simpleMessage("Performance"),
+    "changelogReverts": MessageLookupByLibrary.simpleMessage("Reverts"),
     "checkUpdate": MessageLookupByLibrary.simpleMessage("Check for updates"),
     "checkUpdateError": MessageLookupByLibrary.simpleMessage(
       "The current application is already the latest version",

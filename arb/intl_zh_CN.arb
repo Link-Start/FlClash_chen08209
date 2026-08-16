@@ -553,5 +553,10 @@
   "geoSkipped": "{name} 已是最新版本",
   "geoUpdated": "{name} 已更新",
   "secondsCount": "{count} 秒",
-  "entriesCount": "{count} 个条目"
+  "entriesCount": "{count} 个条目",
+  "changelogBreaking": "重大变更",
+  "changelogFeatures": "新功能",
+  "changelogFixes": "问题修复",
+  "changelogPerformance": "性能优化",
+  "changelogReverts": "已回滚"
 }

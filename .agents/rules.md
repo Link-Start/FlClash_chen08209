@@ -154,6 +154,31 @@ Write what the change does, not that something changed: `perf(views): stop redoi
 
 Install the hooks once with `pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg`.
 
+### Changelog Trailers
+
+`tool/changelog.dart` builds the user facing changelog from the commit history, so the trailers below are the copy that
+ships to users. The subject stays the developer facing summary and is only the fallback.
+
+```text
+feat(profiles): support per-profile override script
+
+Changelog: Per-profile override scripts
+Changelog-zh-CN: 支持为单个订阅配置覆写脚本
+Changelog-ja: プロファイルごとの上書きスクリプトに対応
+Changelog-ru: Поддержка скриптов переопределения для профиля
+```
+
+- `Changelog:` is the English entry. `Changelog: skip` drops the commit from the changelog entirely.
+- `Changelog-zh-CN:`, `Changelog-ja:`, `Changelog-ru:` are the translations; a missing one falls back to English. The
+  locale suffixes match `arb/intl_*.arb` and any other suffix fails the hook.
+- `Changelog-Type:` moves an entry into another group, for example to promote a `refactor` that users will notice. Valid
+  values are `breaking`, `feat`, `fix`, `perf`, `revert`.
+- `BREAKING CHANGE:` is required whenever the subject carries `!`, and its text becomes the breaking entry.
+  `Breaking-zh-CN:` and friends translate it.
+
+`feat`, `fix`, `perf`, `revert` and breaking commits are collected by default; every other type is dropped unless it
+carries a `Changelog:` trailer. Commits missing a trailer reuse their subject, and the hook says so without blocking.
+
 ## Generated Code
 
 Do not manually edit generated files under:

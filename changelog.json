@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "versions": [
+    {
+      "version": "0.8.96",
+      "tag": "v0.8.96",
+      "date": "2026-08-17",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "7fb4f4f",
+              "text": {
+                "en": "Fix whole group delay test failing on Windows",
+                "zh-CN": "修复 Windows 上整组延迟测试失败的问题",
+                "ja": "Windowsでグループ全体の遅延テストが失敗する問題を修正",
+                "ru": "Исправлен сбой теста задержки всей группы на Windows"
+              }
+            }
+          ]
+        },
+        {
+          "type": "perf",
+          "entries": [
+            {
+              "id": "903e2b8",
+              "text": {
+                "en": "Optimize package icon loading and connections polling",
+                "zh-CN": "优化包图标加载与连接状态轮询",
+                "ja": "パッケージアイコンの読み込みと接続ポーリングを最適化",
+                "ru": "Оптимизирована загрузка значков пакетов и опрос подключений"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

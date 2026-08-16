@@ -220,6 +220,15 @@ class MessageLookup extends MessageLookupByLibrary {
     "cancelSelectAll": MessageLookupByLibrary.simpleMessage(
       "Отменить выбор всего",
     ),
+    "changelogBreaking": MessageLookupByLibrary.simpleMessage(
+      "Важные изменения",
+    ),
+    "changelogFeatures": MessageLookupByLibrary.simpleMessage("Новые функции"),
+    "changelogFixes": MessageLookupByLibrary.simpleMessage("Исправления"),
+    "changelogPerformance": MessageLookupByLibrary.simpleMessage(
+      "Производительность",
+    ),
+    "changelogReverts": MessageLookupByLibrary.simpleMessage("Откаты"),
     "checkUpdate": MessageLookupByLibrary.simpleMessage("Проверить обновления"),
     "checkUpdateError": MessageLookupByLibrary.simpleMessage(
       "Текущее приложение уже является последней версией",

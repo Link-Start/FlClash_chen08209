@@ -553,5 +553,10 @@
   "geoSkipped": "Для {name} уже установлена последняя версия",
   "geoUpdated": "{name} обновлено",
   "secondsCount": "{count} секунд",
-  "entriesCount": "{count} записей"
+  "entriesCount": "{count} записей",
+  "changelogBreaking": "Важные изменения",
+  "changelogFeatures": "Новые функции",
+  "changelogFixes": "Исправления",
+  "changelogPerformance": "Производительность",
+  "changelogReverts": "Откаты"
 }

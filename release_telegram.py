@@ -12,7 +12,10 @@ CHAT_ID = "@FlClash"
 API_URL = f"http://localhost:8081/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
 
 DIST_DIR = os.path.join(os.getcwd(), "dist")
-release = os.path.join(os.getcwd(), "release.md")
+# Rendered by `tool/changelog.dart render telegram`: plain bullets, already
+# truncated to fit the caption limit. release.md carries the download table and
+# would blow past that limit.
+release = os.path.join(os.getcwd(), "telegram.md")
 
 text = ""
 
