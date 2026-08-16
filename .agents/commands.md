@@ -87,7 +87,7 @@ flutter test test/setup_test.dart
 flutter test plugins/proxy/test/proxy_test.dart
 ```
 
-Root `flutter test` only discovers the root package's `test/` directory by default. Include bundled plugin Dart tests by passing paths explicitly, or run `flutter test` from that plugin package directory. Native plugin tests under platform folders are not run by `flutter test`.
+Root `flutter test` only discovers the root package's `test/` directory by default. Include bundled plugin Dart tests by passing paths explicitly, or run `flutter test` from that plugin package directory, or run `bash tool/check_plugins.sh` to analyze and test every plugin package the way CI does. Native plugin tests under platform folders are not run by `flutter test`.
 
 For the current Core/service architecture, useful focused checks are:
 
@@ -160,3 +160,9 @@ plugin packages, so CI also validates local Flutter packages, the setup build
 tool, the Go wrapper, and Rust components from their own package directories. A
 separate Windows runner compiles and tests the helper's `windows-service`
 feature before release builds can start.
+
+`bash tool/check_plugins.sh` is that plugin gate, and CI runs the same script.
+It discovers every `plugins/*/pubspec.yaml`, analyzes each package, and runs
+`flutter test` wherever `test/*_test.dart` exists. Adding a plugin package needs
+no workflow edit; enumerating packages by hand in the workflow is what
+previously left `plugins/tray` unanalyzed and untested.

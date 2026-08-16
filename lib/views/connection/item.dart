@@ -1,6 +1,7 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/plugins/app.dart';
 import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
@@ -25,6 +26,10 @@ class TrackerInfoItem extends ConsumerWidget {
     return globalState.measure.bodySmallHeight + 20;
   }
 
+  Future<ImageProvider?> _getPackageIcon(TrackerInfo connection) async {
+    return await app?.getPackageIcon(connection.metadata.process);
+  }
+
   String _getSourceText(BuildContext context, TrackerInfo trackerInfo) {
     final progress = trackerInfo.progressText.isNotEmpty
         ? '${trackerInfo.progressText} · '
@@ -45,6 +50,22 @@ class TrackerInfoItem extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(trackerInfo.desc, style: context.textTheme.bodyLarge),
+        // Row(
+        //   mainAxisSize: MainAxisSize.max,
+        //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        //   spacing: 8,
+        //   children: [
+        //     Flexible(
+        //       child: Text(trackerInfo.desc, style: context.textTheme.bodyLarge),
+        //     ),
+        //     Text(
+        //       trackerInfo.start.lastUpdateTimeDesc,
+        //       style: context.textTheme.bodySmall?.copyWith(
+        //         color: context.colorScheme.onSurface.opacity60,
+        //       ),
+        //     ),
+        //   ],
+        // ),
         const SizedBox(height: 6),
         Text(
           _getSourceText(context, trackerInfo),
@@ -100,9 +121,20 @@ class TrackerInfoItem extends ConsumerWidget {
               margin: const EdgeInsets.only(top: 4),
               width: 42,
               height: 42,
-              child: PackageIcon(
-                packageName: trackerInfo.metadata.process,
-                size: 42,
+              child: FutureBuilder<ImageProvider?>(
+                future: _getPackageIcon(trackerInfo),
+                builder: (_, snapshot) {
+                  if (!snapshot.hasData && snapshot.data == null) {
+                    return Container();
+                  } else {
+                    return Image(
+                      image: snapshot.data!,
+                      gaplessPlayback: true,
+                      width: 42,
+                      height: 42,
+                    );
+                  }
+                },
               ),
             ),
           )

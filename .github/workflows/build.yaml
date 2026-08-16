@@ -2,8 +2,15 @@ name: build
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
 env:
   IS_STABLE: ${{ !contains(github.ref, '-') }}
   FLUTTER_VERSION: '3.44.4'
@@ -36,30 +43,14 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
       - name: Run tests
-        run: flutter test --reporter expanded
+        run: flutter test --reporter expanded --coverage
+
+      - name: Check coverage
+        run: dart run tool/check_coverage.dart coverage/lcov.info 71
 
       - name: Validate local Flutter packages
         shell: bash
-        run: |
-          for package in plugins/proxy plugins/wifi_ssid plugins/window_ext plugins/setup; do
-            (
-              cd "$package"
-              flutter pub get
-              flutter analyze --no-fatal-infos
-            )
-          done
-
-      - name: Run local plugin tests
-        shell: bash
-        run: |
-          (
-            cd plugins/proxy
-            flutter test --reporter expanded
-          )
-          (
-            cd plugins/wifi_ssid
-            flutter test --reporter expanded
-          )
+        run: bash tool/check_plugins.sh
 
       - name: Validate setup build tool
         working-directory: plugins/setup/buildkit/build_tool
@@ -76,11 +67,40 @@ jobs:
 
       - name: Validate Go core wrapper
         working-directory: core
+        shell: bash
         env:
           CGO_ENABLED: 0
         run: |
-          go test .
+          # `go test` succeeds silently when a package has no test files, so
+          # assert the wrapper actually ships tests before trusting the result.
+          if ! compgen -G '*_test.go' > /dev/null; then
+            echo 'No Go tests found in core/; the test step would pass vacuously.' >&2
+            exit 1
+          fi
+          test -z "$(gofmt -l ./*.go)" || { gofmt -l ./*.go >&2; exit 1; }
+          go test -count=1 .
           go vet .
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run Android unit tests
+        working-directory: android
+        shell: bash
+        run: |
+          # settings.gradle.kts resolves the Flutter tooling through local.properties,
+          # which only the Flutter build itself would otherwise generate.
+          {
+            echo "flutter.sdk=$FLUTTER_ROOT"
+            echo "sdk.dir=$ANDROID_HOME"
+          } > local.properties
+          # Modules are listed explicitly: the aggregate testDebugUnitTest task would
+          # also run third-party Flutter plugin suites. `:core` is omitted because its
+          # only class loads the native library through System.loadLibrary.
+          ./gradlew :common:testDebugUnitTest :service:testDebugUnitTest :app:testDebugUnitTest
 
       - name: Validate Rust components
         run: |

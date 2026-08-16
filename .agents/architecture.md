@@ -157,6 +157,20 @@ Proxy delay testing follows the same failure-safe UI rule. `proxyDelayTest()` re
 real result on success, and logs plus records `-1` on exceptions. `DelayTestButton` reverses its animation in `finally`, so
 an RPC failure cannot leave the control permanently spinning.
 
+## Settings Rows
+
+`lib/widgets/config_item.dart` holds the shared settings-row vocabulary: `ConfigToggleItem`, `ConfigOptionsItem`,
+`ConfigTextItem`, and `ConfigListInputItem`. Each takes a `selector` (a `ProviderListenable`, normally
+`someProvider.select(...)`) and an `onChanged(ref, value)` writer, and watches its own selector so changing one setting
+rebuilds one row instead of the whole section. Titles and subtitles are `ConfigLabel` callbacks that receive
+`AppLocalizations`, which keeps literal labels such as `IPv6` and localized labels in the same shape.
+
+Build settings screens from these directly, or from a file-local helper that binds one provider once — see `_dnsToggle`
+in `lib/views/config/dns.dart` and `_appSettingToggle` in `lib/views/application_setting.dart`. Declare a named
+`ConsumerWidget` only when a row is genuinely reused across screens, as `lib/views/config/network.dart` rows are by
+`lib/views/dashboard/widgets/quick_options.dart`. Rows with bespoke behaviour — a custom dialog, a derived value, or a
+second provider write — stay hand-written rather than growing extra parameters on the shared items.
+
 ## State Management
 
 Provider files in `lib/providers/`:
@@ -165,9 +179,60 @@ Provider files in `lib/providers/`:
 - `config.dart`: persistent config providers, app settings, theme, VPN, proxy style.
 - `state.dart`: derived/computed providers, navigation, proxy, tray, color scheme.
 - `action.dart`: business logic notifiers, setup, backup, core lifecycle, proxy selection.
+- `core.dart`: `coreHandlerProvider`, the container-scoped handle on `CoreController`.
 - `database.dart`: Drift database provider wrappers.
 
+### Reaching Singletons
+
+`lib/common/` and `lib/core/` publish process-wide singletons (`coreController`,
+`system`, `preferences`, `appPath`, `request`, and others). Code that already has a
+`Ref` or a `WidgetRef` reads them through a provider instead, so a test can scope a
+fake to one `ProviderContainer` rather than swapping a global and relying on a
+tearDown to put it back.
+
+`coreHandlerProvider` is the established case. Every call site under
+`lib/providers/`, `lib/manager/` and `lib/views/` goes through it; notifiers and
+`ConsumerState` classes that touch Core repeatedly hold it as
+`CoreController get _core => ref.read(coreHandlerProvider)`.
+
+Tests override it with `coreHandlerProvider.overrideWithValue(CoreController.scoped(fake))`,
+which does not claim the singleton. `CoreController.test` does claim it, and is
+only for tests that have not moved yet. Prefer the scoped override even when a
+test passes either way: a test that claims the singleton makes the global and the
+provider resolve to the same fake, so it cannot tell a provider read from a
+leftover global read, and a half-migrated call site stays green.
+
+Two deliberate exceptions:
+
+- `globalState` owns the `ProviderContainer`, so it cannot itself live in one. Code
+  without a `Ref` reaches providers through `globalState.container.read(...)`.
+- `Profile.saveFile`/`saveFileWithPath` in `lib/models/profile.dart` and
+  `lib/views/dashboard/widgets/memory_info.dart` still call `coreController`
+  directly. Both are model/plain-`State` code with no `Ref`; giving them one is a
+  layering change, not a lookup change.
+
 `globalState` in `lib/state.dart` is a singleton holding app lifecycle, timers, theme, and start/stop state. Providers are generated into `lib/providers/generated/`.
+
+### High-Frequency Buffers
+
+`logsProvider`, `requestsProvider` and `trafficsProvider` hold a `FixedList`
+(`lib/common/fixed.dart`), which trades a normal copy-on-write for a shared
+buffer tagged with a generation counter:
+
+- `append` mutates the buffer in place and returns a new wrapper one generation
+  ahead. That is what providers publish, so `updateShouldNotify` still fires.
+- `list` returns an immutable copy, cached until the next mutation. It must stay
+  eager: an older wrapper shares the buffer, so its contents move on. Anything
+  that needs a stable view has to read `list` at the moment it is notified, not
+  hold the wrapper and read later.
+- Consumers that only need to know *that* the buffer changed watch `revision`,
+  not `list` — selecting on the list snapshots and deep-compares the whole
+  buffer on every arrival, which is what this design exists to avoid. See
+  `lib/views/logs.dart` for the pattern: watch the generation, snapshot inside
+  the throttled callback.
+
+`add`/`clear` mutate in place without advancing the generation; use them only on
+a buffer you own outright (seeding, resets, tests), never on published state.
 
 ## Database
 
@@ -339,7 +404,7 @@ Architecture detection is automatic. The `--description` flag passed to `flutter
 - `setup`: build-time harness for Go core artifacts and the Windows Rust helper; no runtime Dart API.
 - `proxy`: system proxy configuration.
 - `rust_api`: runtime Flutter Rust Bridge FFI plugin built through Cargokit.
-- `tray_manager`: system tray fork/customization.
+- `tray`: system tray for Linux, macOS and Windows. Written for FlClash; replaced the `tray_manager` fork.
 - `wifi_ssid`: Wi-Fi SSID detection.
 - `window_ext`: window extensions.
 - `flutter_distributor`: app packaging/distribution.

@@ -118,6 +118,21 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
               label: appLocalizations.nullTip(appLocalizations.requests),
             );
           }
+          final items = requests
+              .map<Widget>(
+                (trackerInfo) => TrackerInfoItem(
+                  key: Key(trackerInfo.id),
+                  trackerInfo: trackerInfo,
+                  onClickKeyword: (value) {
+                    context.commonScaffoldState?.addKeyword(value);
+                  },
+                  detailTitle: appLocalizations.details(
+                    appLocalizations.request,
+                  ),
+                ),
+              )
+              .separated(const Divider(height: 0))
+              .toList();
           return Align(
             alignment: Alignment.topCenter,
             child: CommonScrollBar(
@@ -131,26 +146,15 @@ class _RequestsViewState extends ConsumerState<RequestsView> {
                   _requestsStateNotifier.value = _requestsStateNotifier.value
                       .copyWith(autoScrollToEnd: false);
                 },
-                child: SuperListView.separated(
+                child: SuperListView.builder(
                   reverse: true,
                   shrinkWrap: true,
                   physics: const NextClampingScrollPhysics(),
                   controller: _scrollController,
-                  itemCount: requests.length,
-                  separatorBuilder: (_, _) => const Divider(height: 0),
                   itemBuilder: (_, index) {
-                    final trackerInfo = requests[index];
-                    return TrackerInfoItem(
-                      key: Key(trackerInfo.id),
-                      trackerInfo: trackerInfo,
-                      onClickKeyword: (value) {
-                        context.commonScaffoldState?.addKeyword(value);
-                      },
-                      detailTitle: appLocalizations.details(
-                        appLocalizations.request,
-                      ),
-                    );
+                    return items[index];
                   },
+                  itemCount: items.length,
                 ),
               ),
             ),

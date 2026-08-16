@@ -61,46 +61,14 @@ class App {
         false;
   }
 
-  final Map<String, ImageProvider?> _packageIcons = {};
-  final Map<String, Future<ImageProvider?>> _packageIconTasks = {};
-
-  bool hasPackageIcon(String packageName) {
-    return _packageIcons.containsKey(packageName);
-  }
-
-  ImageProvider? getCachedPackageIcon(String packageName) {
-    return _packageIcons[packageName];
-  }
-
-  Future<ImageProvider?> getPackageIcon(String packageName) {
-    if (packageName.isEmpty) {
-      return Future.value(null);
+  Future<ImageProvider?> getPackageIcon(String packageName) async {
+    final path = await methodChannel.invokeMethod<String>('getPackageIcon', {
+      'packageName': packageName,
+    });
+    if (path == null) {
+      return null;
     }
-    if (_packageIcons.containsKey(packageName)) {
-      return Future.value(_packageIcons[packageName]);
-    }
-    return _packageIconTasks[packageName] ??= _loadPackageIcon(packageName);
-  }
-
-  Future<ImageProvider?> _loadPackageIcon(String packageName) async {
-    ImageProvider? icon;
-    try {
-      final path = await methodChannel.invokeMethod<String>('getPackageIcon', {
-        'packageName': packageName,
-      });
-      icon = path == null ? null : FileImage(File(path));
-    } catch (error) {
-      commonPrint.log('getPackageIcon error: $error');
-    }
-    _packageIcons[packageName] = icon;
-    _packageIconTasks.remove(packageName);
-    return icon;
-  }
-
-  @visibleForTesting
-  void clearPackageIconCache() {
-    _packageIcons.clear();
-    _packageIconTasks.clear();
+    return FileImage(File(path));
   }
 
   Future<bool?> tip(String? message) async {

@@ -24,9 +24,22 @@ class _ProfilesViewState extends State<ProfilesView> {
   Function? applyConfigDebounce;
   bool _isUpdating = false;
 
+  // final GlobalKey _targetKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   final context = _targetKey.currentContext;
+    //   if (context == null) {
+    //     return;
+    //   }
+    //   Scrollable.ensureVisible(
+    //     context,
+    //     duration: commonDuration,
+    //     alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    //   );
+    // });
   }
 
   void _handleShowAddExtendPage() {

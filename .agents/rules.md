@@ -4,7 +4,11 @@ These are repository coding and testing conventions. Codex command permission ru
 
 ## Dart and Flutter Style
 
-`analysis_options.yaml` enforces these non-default rules:
+The lint set lives in `lint_options.yaml` at the repo root. The root `analysis_options.yaml` and every local plugin under
+`plugins/*` include it, so application and plugin code are held to the same rules. Add or change a rule there, not in an
+individual `analysis_options.yaml`; those files carry only their own `analyzer.exclude` entries.
+
+`lint_options.yaml` enforces these non-default rules:
 
 - `prefer_single_quotes: true`: always use single quotes.
 - `require_trailing_commas: true`: use trailing commas in multi-line argument lists.
@@ -84,6 +88,17 @@ the invariant hard to break beats prose that asks the next reader not to break i
   broadcast lease, but must not cancel, reverse, or otherwise redefine the service operation.
 - Presentation smoothing such as `CoreStatusButton`'s connecting hold must remain local display state. It must not delay or
   overwrite `coreStatusProvider`, and a real failure must bypass/cancel the hold immediately.
+- `Tray.hide()` is idempotent on all three desktop platforms and returns native state to "`show` was never called".
+  `AppTray.shutdown()` latches, so no later `update()`/`updateTitle()` can resurrect the icon once shutdown begins.
+  Keep it that way; a resurrected icon outlives `exit(0)` as a Windows ghost icon, because `setPreventClose(true)`
+  means `WM_DESTROY` never runs.
+- The `tray` plugin owns call ordering, idempotency, serialization, and unchanged-payload suppression. Application code
+  declares desired state through one `Tray.show(TraySpec)` call and must not add platform branches to work around
+  ordering. Platform branches in `lib/common/tray.dart` are only for deliberate product differences (macOS speed title
+  and group submenus); query `Tray.instance.capabilities` for ability differences.
+- Every native `show` returns whether the tray now reflects the payload, and reports `false` instead of showing a broken
+  icon. `Tray` caches the payload signature only on `true`, so a rejected `show` is retried by the next update rather
+  than suppressed until restart. Any test that mocks the `tray` channel must return `true` from `show`.
 
 ## Testing Rules
 
@@ -96,6 +111,18 @@ Use `CoreController.test(mock)` to inject a mocked `CoreHandlerInterface`. Call 
 
 Register fallback values for freezed params used with `any()` matchers.
 
+`tool/check_coverage.dart` enforces a total floor passed by CI plus per-group floors declared in `_groupFloors`. Raise a
+group's floor when new tests lift it; do not lower one to make a run pass.
+
+Every measured group needs a floor. A group the report measures but `_groupFloors` does not declare fails the run, so
+adding a top-level directory under `lib/` means adding its floor in the same change. Set a new floor at or just below
+the coverage the directory actually has; the point is to stop a slide, not to backfill tests before the directory can
+land.
+
+Prefer `coreHandlerProvider.overrideWithValue(CoreController.scoped(fake))` over `CoreController.test(fake)` in new and
+touched tests. `CoreController.test` claims the process-wide singleton, which makes a global read and a provider read
+resolve to the same fake, so it cannot fail on a call site that still reaches for the global.
+
 Use `ProviderContainer` directly for simple Riverpod provider tests. The generated Riverpod `update()` method takes a callback:
 
 ```dart
@@ -106,6 +133,26 @@ When testing freezed models with nested objects, always round-trip through `json
 
 For async widgets, put visual cleanup in `finally` when the action may throw. Focused widget tests should cover success,
 failure, disposal, and any timer boundary that changes visible state.
+
+## Commit Messages
+
+Subjects follow Conventional Commits and are enforced by the `commit-msg` hook in `.pre-commit-config.yaml`, which runs
+`tool/check_commit_msg.sh`:
+
+```text
+<type>[(scope)][!]: <description>
+```
+
+- Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+- Scope is optional and lower case; use a comma to list several, as in `fix(core,android)`.
+- `!` before the colon marks a breaking change.
+- Descriptions start in lower case, omit the trailing period, and keep the whole subject within 100 characters.
+- `Merge`/`Revert` subjects and `fixup!`/`squash!` commits are exempt.
+
+Write what the change does, not that something changed: `perf(views): stop redoing per-frame work in build`, not
+`Optimize more details`.
+
+Install the hooks once with `pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg`.
 
 ## Generated Code
 
