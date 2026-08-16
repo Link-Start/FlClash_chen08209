@@ -66,10 +66,7 @@ class ApplicationState extends ConsumerState<Application> {
     },
   );
 
-  ColorScheme _getAppColorScheme({
-    required Brightness brightness,
-    int? primaryColor,
-  }) {
+  ColorScheme _getAppColorScheme({required Brightness brightness}) {
     return ref.read(genColorSchemeProvider(brightness));
   }
 
@@ -118,6 +115,9 @@ class ApplicationState extends ConsumerState<Application> {
   void _autoUpdateProfilesTask() {
     _autoUpdateProfilesTaskTimer = Timer(const Duration(minutes: 20), () async {
       await ref.read(profilesActionProvider.notifier).autoUpdateProfiles();
+      if (!mounted) {
+        return;
+      }
       _autoUpdateProfilesTask();
     });
   }
@@ -168,17 +168,13 @@ class ApplicationState extends ConsumerState<Application> {
           theme: ThemeData(
             useMaterial3: true,
             pageTransitionsTheme: _pageTransitionsTheme,
-            colorScheme: _getAppColorScheme(
-              brightness: Brightness.light,
-              primaryColor: themeProps.primaryColor,
-            ),
+            colorScheme: _getAppColorScheme(brightness: Brightness.light),
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
             pageTransitionsTheme: _pageTransitionsTheme,
             colorScheme: _getAppColorScheme(
               brightness: Brightness.dark,
-              primaryColor: themeProps.primaryColor,
             ).toPureBlack(themeProps.pureBlack),
           ),
           home: child!,

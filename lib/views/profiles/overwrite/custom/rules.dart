@@ -489,12 +489,8 @@ class _AddOrEditRuleViewState extends ConsumerState<_AddOrEditRuleView> {
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     final profileId = ProfileIdProvider.of(context)!.profileId;
-    final isBottomSheet =
-        SheetProvider.of(context)?.type == SheetType.bottomSheet;
     final rule = ref.watch(ruleProvider);
-    final height = isBottomSheet
-        ? ref.read(viewSizeProvider).height * 0.60
-        : double.maxFinite;
+    final height = ref.sheetHeight(context, 0.60);
     return AdaptiveSheetScaffold(
       actions: [IconButtonData(icon: Icons.check, onPressed: _handleSave)],
       sheetTransparentToolBar: true,

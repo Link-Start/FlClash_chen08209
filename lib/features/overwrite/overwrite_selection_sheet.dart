@@ -1,6 +1,5 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -68,11 +67,7 @@ class OverwriteSelectionSheet<T> extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final isBottomSheet =
-        SheetProvider.of(context)?.type == SheetType.bottomSheet;
-    final height = isBottomSheet
-        ? ref.read(viewSizeProvider).height * (bottomHeightFactor ?? 1)
-        : double.maxFinite;
+    final height = ref.sheetHeight(context, (bottomHeightFactor ?? 1));
     final isEmpty = sections.every((section) => section.items.isEmpty);
     return AdaptiveSheetScaffold(
       sheetTransparentToolBar: true,

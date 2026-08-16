@@ -151,6 +151,13 @@ rebuilds the provider from its override and silently discards whatever the code 
 re-arms its debounce when it clears the stage, so drain it (`pump` past the duration, then unmount) or the binding fails
 the test on a pending timer.
 
+A field that constructs its own `ValueNotifier`, `TextEditingController`, `ScrollController`, `FocusNode`, `TabController`,
+`PageController`, `AnimationController` or `StreamController` must be released in the same file.
+`test/lint/disposable_field_test.dart` enforces this by scanning `lib/`, because no lint covers it: `close_sinks` only sees
+sinks, and nothing in the standard set tracks `ChangeNotifier` disposal. A field that genuinely outlives its owner goes in
+that test's `_allowed` set with the reason, not left bare. Controllers received as widget parameters belong to the caller
+and are out of scope.
+
 A `State.dispose()` override must not await before `super.dispose()`. `StatefulElement.unmount` calls `dispose()` and then
 immediately asserts that `super.dispose()` already ran, so an `await` defers the call past the assert and every teardown
 throws "`…State.dispose failed to call super.dispose.`" in debug and profile builds. Declare the override as `void

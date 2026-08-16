@@ -141,7 +141,7 @@ class _CommonPopupBoxState extends State<CommonPopupBox> {
     if (renderBox == null) {
       return;
     }
-    final viewPadding = MediaQuery.of(context).viewPadding;
+    final viewPadding = MediaQuery.viewPaddingOf(context);
     _targetOffsetValueNotifier.value = renderBox
         .localToGlobal(
           Offset.zero.translate(viewPadding.right, viewPadding.top),
@@ -150,11 +150,17 @@ class _CommonPopupBoxState extends State<CommonPopupBox> {
   }
 
   @override
+  void dispose() {
+    _targetOffsetValueNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (_, _) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_isOpen) {
+          if (mounted && _isOpen) {
             _updateOffset();
           }
         });

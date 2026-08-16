@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/database/database.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
@@ -144,11 +143,7 @@ class _IconEditViewState extends ConsumerState<IconEditView>
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     final dimension = globalState.measure.bodyLargeHeight + 28;
-    final isBottomSheet =
-        SheetProvider.of(context)?.type == SheetType.bottomSheet;
-    final height = isBottomSheet
-        ? ref.read(viewSizeProvider).height * 0.5
-        : double.maxFinite;
+    final height = ref.sheetHeight(context, 0.5);
     return AdaptiveSheetScaffold(
       backAction: () {
         Navigator.of(context).pop(_srcController.text);

@@ -242,6 +242,13 @@ class _AddOrEditRuleDialogState extends State<AddOrEditRuleDialog> {
     }
   }
 
+  @override
+  void dispose() {
+    _ruleTargetController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
+
   void _handleSubmit() {
     final res = _formKey.currentState?.validate();
     if (res == false) {

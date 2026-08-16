@@ -154,11 +154,7 @@ class _NameAddPickerState extends ConsumerState<NameAddPicker>
   @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
-    final isBottomSheet =
-        SheetProvider.of(context)?.type == SheetType.bottomSheet;
-    final height = isBottomSheet
-        ? ref.read(viewSizeProvider).height * widget.heightFactor
-        : double.maxFinite;
+    final height = ref.sheetHeight(context, widget.heightFactor);
     final sections = widget
         .sectionsBuilder(context, ref)
         .where((section) => section.entries.isNotEmpty)

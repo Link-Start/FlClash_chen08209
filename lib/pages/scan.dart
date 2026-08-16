@@ -77,10 +77,7 @@ class _ScanPageState extends ConsumerState<ScanPage>
 
   @override
   Widget build(BuildContext context) {
-    final double sideLength = min(
-      400,
-      MediaQuery.of(context).size.width * 0.67,
-    );
+    final double sideLength = min(400, MediaQuery.sizeOf(context).width * 0.67);
     final scanWindow = Rect.fromCenter(
       center: MediaQuery.sizeOf(context).center(Offset.zero),
       width: sideLength,

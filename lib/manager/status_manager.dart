@@ -91,7 +91,7 @@ class StatusManagerState extends State<StatusManager> {
             final top = ref.watch(overlayTopOffsetProvider);
             return Container(
               margin: EdgeInsets.only(
-                top: top + MediaQuery.of(context).viewPadding.top + 8,
+                top: top + MediaQuery.viewPaddingOf(context).top + 8,
               ),
               child: child,
             );

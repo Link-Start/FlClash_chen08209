@@ -600,6 +600,12 @@ class _PaletteDialogState extends State<_PaletteDialog> {
   final _controller = ValueNotifier<Color>(Color(Hct.from(0, 0, 60).toInt()));
 
   @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     return CommonDialog(
