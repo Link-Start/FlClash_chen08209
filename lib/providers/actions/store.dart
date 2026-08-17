@@ -8,14 +8,9 @@ class StoreAction extends _$StoreAction {
   void build() {}
 
   Future<void> shakingStore() async {
-    final profileIds = ref.read(
-      profilesProvider.select((state) => state.map((item) => item.id)),
-    );
-    final scriptIds = await ref.read(
-      scriptsProvider.future.select(
-        (state) async => (await state).map((item) => item.id),
-      ),
-    );
+    final profileIds = ref.read(profilesProvider).map((item) => item.id);
+    final scripts = await ref.read(scriptsProvider.future);
+    final scriptIds = scripts.map((item) => item.id);
     final pathsToDelete = await shakingProfileTask((
       profileIds: profileIds,
       scriptIds: scriptIds,

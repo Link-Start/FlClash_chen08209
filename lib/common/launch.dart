@@ -11,10 +11,7 @@ class AutoLaunch {
   static AutoLaunch? _instance;
 
   AutoLaunch._internal() {
-    launchAtStartup.setup(
-      appName: appName,
-      appPath: Platform.resolvedExecutable,
-    );
+    launcher.setup(appName: appName, appPath: Platform.resolvedExecutable);
   }
 
   factory AutoLaunch() {
@@ -22,16 +19,21 @@ class AutoLaunch {
     return _instance!;
   }
 
+  // Every call writes to the real autostart registry — a LaunchAgents plist,
+  // an `.desktop` entry or a registry key — so tests must replace this.
+  @visibleForTesting
+  static LaunchAtStartup launcher = launchAtStartup;
+
   Future<bool> get isEnable async {
-    return launchAtStartup.isEnabled();
+    return launcher.isEnabled();
   }
 
   Future<bool> enable() async {
-    return launchAtStartup.enable();
+    return launcher.enable();
   }
 
   Future<bool> disable() async {
-    return launchAtStartup.disable();
+    return launcher.disable();
   }
 
   Future<void> updateStatus(bool isAutoLaunch) async {

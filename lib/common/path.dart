@@ -2,26 +2,43 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AppPath {
   static AppPath? _instance;
   Completer<Directory> dataDir = Completer();
-  late final Future<Directory?> _downloadDir = getDownloadsDirectory();
+  late final Future<Directory?> _downloadDir = downloadDirectory();
   Completer<Directory> tempDir = Completer();
   Completer<Directory> cacheDir = Completer();
   late String appDirPath;
 
+  @visibleForTesting
+  static Future<Directory> Function() supportDirectory =
+      getApplicationSupportDirectory;
+
+  @visibleForTesting
+  static Future<Directory> Function() temporaryDirectory =
+      getTemporaryDirectory;
+
+  @visibleForTesting
+  static Future<Directory> Function() cacheDirectory =
+      getApplicationCacheDirectory;
+
+  @visibleForTesting
+  static Future<Directory?> Function() downloadDirectory =
+      getDownloadsDirectory;
+
   AppPath._internal() {
     appDirPath = join(dirname(Platform.resolvedExecutable));
-    getApplicationSupportDirectory().then((value) {
+    supportDirectory().then((value) {
       dataDir.complete(value);
     });
-    getTemporaryDirectory().then((value) {
+    temporaryDirectory().then((value) {
       tempDir.complete(value);
     });
-    getApplicationCacheDirectory().then((value) {
+    cacheDirectory().then((value) {
       cacheDir.complete(value);
     });
   }

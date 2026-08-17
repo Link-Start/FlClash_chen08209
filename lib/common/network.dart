@@ -1,5 +1,15 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
+typedef NetworkInterfaceLister =
+    Future<List<NetworkInterface>> Function({bool includeLoopback});
+
+@visibleForTesting
+NetworkInterfaceLister listNetworkInterfaces =
+    ({bool includeLoopback = false}) =>
+        NetworkInterface.list(includeLoopback: includeLoopback);
+
 extension NetworkInterfaceExt on NetworkInterface {
   bool get isWifi {
     final nameLowCase = name.toLowerCase();
@@ -26,7 +36,7 @@ extension InternetAddressExt on InternetAddress {
 
 Future<String?> getLocalIpAddress() async {
   final List<NetworkInterface> interfaces =
-      await NetworkInterface.list(includeLoopback: false)
+      await listNetworkInterfaces(includeLoopback: false)
         ..sort((a, b) {
           if (a.isWifi && !b.isWifi) return -1;
           if (!a.isWifi && b.isWifi) return 1;

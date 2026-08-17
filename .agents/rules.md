@@ -139,6 +139,18 @@ Construct the Android lib handler with `CoreLib.scoped(fakeService)`. The `servi
 and is therefore null on every test host, so a `CoreLib()` built from it silently takes the null-service fallback on every
 path. `CoreLib.scoped` binds an explicit `Service` instead; reset the singleton with `CoreLib.resetInstance()` in `tearDown`.
 
+Three globals in `lib/common` reach real host state and carry a `@visibleForTesting` seam to stand in front of it:
+`AutoLaunch.launcher`, `listNetworkInterfaces` and `LinkManager.uriLinkStream`. Replace the launcher in particular — every
+`enable`/`disable`/`isEnabled` writes the actual autostart entry (a LaunchAgents plist, a `.desktop` file or a registry
+key), so a test that skips the seam registers the test binary on the machine that ran it. `updateStatus` returns early
+under `kDebugMode`, which is always true beneath `flutter test`, so its remaining branches cannot be reached from a test
+at all; `test/common/launch_test.dart` pins the early return instead.
+
+`pumpAndSettle` never returns on a page holding `EditorPage`: the code editor blinks its caret forever, so frames keep
+being scheduled. Pump explicitly instead. `encodeYamlTask` and its neighbours in `common/task.dart` hand work to a real
+isolate through `compute`, which only runs outside the fake-async zone, so a test awaiting one needs
+`tester.runAsync(...)` between the pumps — see `test/views/profile_preview_test.dart`.
+
 `system.isAndroid` / `isMacOS` / `isWindows` / `isLinux` read `dart:io` `Platform` and cannot be overridden, unlike
 `debugDefaultTargetPlatformOverride`. A branch behind one of them is only ever exercised on a host that matches it, so CI
 (`ubuntu-latest`) and a macOS working copy measure different coverage for the same test. Assert host-agnostic behavior,
@@ -250,3 +262,10 @@ After schema, model, or provider changes, run build generation and include focus
 Strings live in `arb/intl_{en,zh_CN,ja,ru}.arb` — flat JSON, no `@` metadata. Add a key to all four, then regenerate with
 `dart run intl_utils:generate`, which rewrites `lib/l10n/`. A key present in only some locales silently falls back to
 English at runtime, so add the translation rather than leaving it out.
+
+Some labels are not reached through the generated `AppLocalizations` getters at all. `Intl.message(<runtime string>)`
+builds the key from an enum name or a stored string — `action_${HotAction.name}`, `${DynamicSchemeVariant.name}Scheme`,
+`NavigationItem.description`. The analyzer sees nothing, and a failed lookup returns the key itself, so a stale key ships
+as `routeMode_config` in the UI rather than throwing. `test/lint/dynamic_message_key_test.dart` expands those families
+from the real enums and fails when a derived key is missing from any locale; every `Intl.message` site in `lib` must be
+registered there, so a new dynamic key cannot be added without also declaring what builds it.
