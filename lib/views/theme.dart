@@ -314,6 +314,7 @@ class _PrimaryColorItemState extends ConsumerState<_PrimaryColorItem> {
               ),
             if (_removablePrimaryColor == null && !isEquals)
               IconButton.filledTonal(
+                tooltip: context.appLocalizations.reset,
                 iconSize: 20,
                 padding: const EdgeInsets.all(4),
                 visualDensity: VisualDensity.compact,
@@ -448,6 +449,7 @@ class _PrimaryColorTile extends StatelessWidget {
               color: Colors.white.opacity0,
               padding: const EdgeInsets.all(8),
               child: IconButton.filledTonal(
+                tooltip: context.appLocalizations.delete,
                 onPressed: onDelete,
                 padding: const EdgeInsets.all(12),
                 iconSize: 30,
@@ -473,6 +475,7 @@ class _AddPrimaryColorTile extends StatelessWidget {
       height: width,
       padding: const EdgeInsets.all(4),
       child: IconButton.filledTonal(
+        tooltip: context.appLocalizations.add,
         onPressed: onPressed,
         iconSize: 32,
         icon: Icon(color: context.colorScheme.primary, Icons.add),

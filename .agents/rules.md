@@ -158,6 +158,21 @@ sinks, and nothing in the standard set tracks `ChangeNotifier` disposal. A field
 that test's `_allowed` set with the reason, not left bare. Controllers received as widget parameters belong to the caller
 and are out of scope.
 
+An `IconButton` whose icon is an icon needs a `tooltip`. It is the button's only accessible name — without it TalkBack and
+VoiceOver announce nothing and the desktop build shows no hover hint. `test/lint/icon_button_tooltip_test.dart` enforces
+it and skips exactly two shapes: an `icon:` holding a `Text`, which is already a visible label, and
+`views/dashboard/widgets/core_status_button.dart`, which takes its label from an enclosing `Tooltip` (a second test fails
+if that wrapper disappears). Reuse an existing string before adding one; a label that depends on state goes on the button
+inside the `ValueListenableBuilder`, not outside it, or the tooltip cannot follow the icon. A row of window buttons hidden
+behind `system.isMacOS` is unreachable from a macOS test host, so extract it — `WindowHeaderActions` is the pattern.
+
+A public top-level declaration that nothing outside its own file references is dead, and no lint catches it:
+`unused_element` covers only private ones, and a barrel `export` keeps a dead file compiling and off every
+"unused import" report. `test/lint/dead_file_test.dart` scans `lib/` for files whose declared names — types plus the
+`final appPath = AppPath()` singletons next to them — appear nowhere else, counting generated code as a consumer (a
+riverpod notifier is reached through its generated provider) and barrels as neither. Files publishing only extensions or
+typedefs are skipped: those are reached through the types they attach to, never by name.
+
 A `State.dispose()` override must not await before `super.dispose()`. `StatefulElement.unmount` calls `dispose()` and then
 immediately asserts that `super.dispose()` already ran, so an `await` defers the call past the assert and every teardown
 throws "`…State.dispose failed to call super.dispose.`" in debug and profile builds. Declare the override as `void
@@ -231,3 +246,7 @@ Do not manually edit generated files under:
 - `lib/l10n/intl/`
 
 After schema, model, or provider changes, run build generation and include focused tests when behavior changes.
+
+Strings live in `arb/intl_{en,zh_CN,ja,ru}.arb` — flat JSON, no `@` metadata. Add a key to all four, then regenerate with
+`dart run intl_utils:generate`, which rewrites `lib/l10n/`. A key present in only some locales silently falls back to
+English at runtime, so add the translation rather than leaving it out.

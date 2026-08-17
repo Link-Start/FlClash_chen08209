@@ -196,51 +196,6 @@ class _WindowHeaderState extends ConsumerState<WindowHeader> {
     isPinNotifier.value = await windowManager.isAlwaysOnTop();
   }
 
-  Widget _buildActions() {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: () async {
-            await _updatePin();
-          },
-          icon: ValueListenableBuilder(
-            valueListenable: isPinNotifier,
-            builder: (_, value, _) {
-              return value
-                  ? const Icon(Icons.push_pin)
-                  : const Icon(Icons.push_pin_outlined);
-            },
-          ),
-        ),
-        IconButton(
-          onPressed: () {
-            windowManager.minimize();
-          },
-          icon: const Icon(Icons.remove),
-        ),
-        IconButton(
-          onPressed: () async {
-            await _updateMaximized();
-          },
-          icon: ValueListenableBuilder(
-            valueListenable: isMaximizedNotifier,
-            builder: (_, value, _) {
-              return value
-                  ? const Icon(Icons.filter_none, size: 20)
-                  : const Icon(Icons.crop_square);
-            },
-          ),
-        ),
-        IconButton(
-          onPressed: () {
-            ref.read(systemActionProvider.notifier).handleClose();
-          },
-          icon: const Icon(Icons.close),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -265,10 +220,88 @@ class _WindowHeaderState extends ConsumerState<WindowHeader> {
           if (system.isMacOS)
             const Text(appName)
           else ...[
-            Positioned(right: 0, child: _buildActions()),
+            Positioned(
+              right: 0,
+              child: WindowHeaderActions(
+                isPinNotifier: isPinNotifier,
+                isMaximizedNotifier: isMaximizedNotifier,
+                onPin: _updatePin,
+                onMinimize: windowManager.minimize,
+                onMaximize: _updateMaximized,
+                onClose: () {
+                  ref.read(systemActionProvider.notifier).handleClose();
+                },
+              ),
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class WindowHeaderActions extends StatelessWidget {
+  const WindowHeaderActions({
+    super.key,
+    required this.isPinNotifier,
+    required this.isMaximizedNotifier,
+    required this.onPin,
+    required this.onMinimize,
+    required this.onMaximize,
+    required this.onClose,
+  });
+
+  final ValueNotifier<bool> isPinNotifier;
+  final ValueNotifier<bool> isMaximizedNotifier;
+  final VoidCallback onPin;
+  final VoidCallback onMinimize;
+  final VoidCallback onMaximize;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final appLocalizations = context.appLocalizations;
+    return Row(
+      children: [
+        ValueListenableBuilder(
+          valueListenable: isPinNotifier,
+          builder: (_, value, _) {
+            return IconButton(
+              tooltip: value
+                  ? appLocalizations.unpinWindow
+                  : appLocalizations.pinWindow,
+              onPressed: onPin,
+              icon: value
+                  ? const Icon(Icons.push_pin)
+                  : const Icon(Icons.push_pin_outlined),
+            );
+          },
+        ),
+        IconButton(
+          tooltip: appLocalizations.minimize,
+          onPressed: onMinimize,
+          icon: const Icon(Icons.remove),
+        ),
+        ValueListenableBuilder(
+          valueListenable: isMaximizedNotifier,
+          builder: (_, value, _) {
+            return IconButton(
+              tooltip: value
+                  ? appLocalizations.unmaximize
+                  : appLocalizations.maximize,
+              onPressed: onMaximize,
+              icon: value
+                  ? const Icon(Icons.filter_none, size: 20)
+                  : const Icon(Icons.crop_square),
+            );
+          },
+        ),
+        IconButton(
+          tooltip: appLocalizations.close,
+          onPressed: onClose,
+          icon: const Icon(Icons.close),
+        ),
+      ],
     );
   }
 }

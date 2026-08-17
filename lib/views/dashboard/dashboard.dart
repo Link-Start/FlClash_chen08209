@@ -85,6 +85,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             return child!;
           },
           child: IconButton(
+            tooltip: context.appLocalizations.addWidget,
             onPressed: () {
               _showAddWidgetsModal();
             },
@@ -94,11 +95,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       FadeRotationScaleBox(
         child: isEdit
             ? IconButton(
+                tooltip: context.appLocalizations.save,
                 key: const ValueKey(true),
                 icon: const Icon(Icons.save, key: ValueKey('save-icon')),
                 onPressed: _handleSaveAndExit,
               )
             : IconButton(
+                tooltip: context.appLocalizations.edit,
                 key: const ValueKey(false),
                 icon: const Icon(Icons.edit, key: ValueKey('edit-icon')),
                 onPressed: _handleEnterEdit,
@@ -337,6 +340,7 @@ class _AddedContainerState extends State<_AddedContainer> {
               width: 24,
               height: 24,
               child: IconButton.filled(
+                tooltip: context.appLocalizations.add,
                 iconSize: 20,
                 padding: const EdgeInsets.all(2),
                 onPressed: _handleAdd,

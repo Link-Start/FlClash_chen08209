@@ -12,6 +12,7 @@ class InfoMessageButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return CommonMinIconButtonTheme(
       child: IconButton(
+        tooltip: context.appLocalizations.tip,
         onPressed: () {
           dialogs.showMessage(message: TextSpan(text: message));
         },

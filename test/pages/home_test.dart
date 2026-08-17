@@ -117,7 +117,7 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(home: HomePage()),
+          child: const TestApp(includeNavigatorKey: false, child: HomePage()),
         ),
       );
       await tester.pump();

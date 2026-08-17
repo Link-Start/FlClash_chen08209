@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fl_clash/common/app_localizations.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/manager/window_manager.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:window_manager/window_manager.dart' show WindowListener;
 
+import '../helpers/test_app.dart';
 import '../helpers/test_profiles.dart';
 
 const _windowChannel = MethodChannel('window_manager');
@@ -189,5 +191,95 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: AppIcon()));
 
     expect(find.byType(Image), findsOneWidget);
+  });
+
+  group('WindowHeaderActions', () {
+    late ValueNotifier<bool> isPin;
+    late ValueNotifier<bool> isMaximized;
+    late List<String> pressed;
+
+    setUp(() {
+      isPin = ValueNotifier(false);
+      isMaximized = ValueNotifier(false);
+      pressed = [];
+    });
+
+    tearDown(() {
+      isPin.dispose();
+      isMaximized.dispose();
+    });
+
+    Future<void> pumpActions(WidgetTester tester) async {
+      await tester.pumpWidget(
+        TestApp(
+          child: WindowHeaderActions(
+            isPinNotifier: isPin,
+            isMaximizedNotifier: isMaximized,
+            onPin: () => pressed.add('pin'),
+            onMinimize: () => pressed.add('minimize'),
+            onMaximize: () => pressed.add('maximize'),
+            onClose: () => pressed.add('close'),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    String tooltipOf(WidgetTester tester, IconData icon) {
+      return tester
+          .widget<IconButton>(
+            find.ancestor(
+              of: find.byIcon(icon),
+              matching: find.byType(IconButton),
+            ),
+          )
+          .tooltip!;
+    }
+
+    testWidgets('names every button for a screen reader', (tester) async {
+      await pumpActions(tester);
+
+      expect(
+        tooltipOf(tester, Icons.push_pin_outlined),
+        currentAppLocalizations.pinWindow,
+      );
+      expect(tooltipOf(tester, Icons.remove), currentAppLocalizations.minimize);
+      expect(
+        tooltipOf(tester, Icons.crop_square),
+        currentAppLocalizations.maximize,
+      );
+      expect(tooltipOf(tester, Icons.close), currentAppLocalizations.close);
+    });
+
+    testWidgets('the pin and maximize labels follow their state', (
+      tester,
+    ) async {
+      await pumpActions(tester);
+
+      isPin.value = true;
+      isMaximized.value = true;
+      await tester.pump();
+
+      expect(
+        tooltipOf(tester, Icons.push_pin),
+        currentAppLocalizations.unpinWindow,
+      );
+      expect(
+        tooltipOf(tester, Icons.filter_none),
+        currentAppLocalizations.unmaximize,
+      );
+    });
+
+    testWidgets('each button reports its own press', (tester) async {
+      await pumpActions(tester);
+
+      await tester.tap(find.byIcon(Icons.push_pin_outlined));
+      await tester.tap(find.byIcon(Icons.remove));
+      await tester.tap(find.byIcon(Icons.crop_square));
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+
+      expect(pressed, ['pin', 'minimize', 'maximize', 'close']);
+    });
   });
 }

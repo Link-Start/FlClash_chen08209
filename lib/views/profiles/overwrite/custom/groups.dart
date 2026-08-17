@@ -610,7 +610,13 @@ class _EditProxyGroupViewState extends ConsumerState<_EditProxyGroupView> {
     final height = ref.sheetHeight(context, 0.65);
     return AdaptiveSheetScaffold(
       sheetTransparentToolBar: true,
-      actions: [IconButtonData(icon: Icons.check, onPressed: _handleSave)],
+      actions: [
+        IconButtonData(
+          icon: Icons.check,
+          onPressed: _handleSave,
+          tooltip: context.appLocalizations.save,
+        ),
+      ],
       body: SizedBox(
         height: height,
         child: ListView(

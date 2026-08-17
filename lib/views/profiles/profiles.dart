@@ -76,12 +76,14 @@ class _ProfilesViewState extends ConsumerState<ProfilesView> {
     return profiles.isNotEmpty
         ? [
             IconButton(
+              tooltip: context.appLocalizations.update,
               onPressed: () {
                 _updateProfiles(profiles);
               },
               icon: const Icon(Icons.sync),
             ),
             IconButton(
+              tooltip: context.appLocalizations.profilesSort,
               onPressed: () {
                 showSheet(
                   context: context,
@@ -389,6 +391,7 @@ class ProfileItem extends ConsumerWidget {
                         popup: CommonPopupMenu(items: _menuItems(context, ref)),
                         targetBuilder: (open) {
                           return IconButton(
+                            tooltip: context.appLocalizations.more,
                             onPressed: () {
                               open();
                             },
@@ -518,7 +521,13 @@ class _ReorderableProfilesSheetState
     final appLocalizations = context.appLocalizations;
     return AdaptiveSheetScaffold(
       sheetTransparentToolBar: true,
-      actions: [IconButtonData(icon: Icons.check, onPressed: _handleSave)],
+      actions: [
+        IconButtonData(
+          icon: Icons.check,
+          onPressed: _handleSave,
+          tooltip: context.appLocalizations.save,
+        ),
+      ],
       body: Padding(
         padding: const EdgeInsets.only(bottom: 32),
         child: ReorderableListView.builder(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:fl_clash/common/color.dart';
+import 'package:fl_clash/common/context.dart';
 import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/widgets/activate_box.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +98,7 @@ class _ScanPageState extends ConsumerState<ScanPage>
             backgroundColor: Colors.transparent,
             automaticallyImplyLeading: false,
             leading: IconButton(
+              tooltip: context.appLocalizations.close,
               style: IconButton.styleFrom(
                 iconSize: 32,
                 foregroundColor: Colors.white,
@@ -131,6 +133,7 @@ class _ScanPageState extends ConsumerState<ScanPage>
                     child: ActivateBox(
                       active: state.torchState != TorchState.unavailable,
                       child: IconButton(
+                        tooltip: context.appLocalizations.torch,
                         color: Colors.white,
                         icon: icon,
                         style: IconButton.styleFrom(
@@ -149,6 +152,7 @@ class _ScanPageState extends ConsumerState<ScanPage>
             margin: const EdgeInsets.only(bottom: 32),
             alignment: Alignment.bottomCenter,
             child: IconButton(
+              tooltip: context.appLocalizations.pickFromAlbum,
               color: Colors.white,
               style: IconButton.styleFrom(
                 foregroundColor: Colors.white,

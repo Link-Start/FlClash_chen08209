@@ -35,6 +35,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
   List<Widget> _buildActions() {
     return [
       IconButton(
+        tooltip: context.appLocalizations.closeConnections,
         onPressed: () async {
           unawaited(_core.closeConnections());
           await _refreshConnections();
@@ -137,6 +138,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
                   context.commonScaffoldState?.addKeyword(value);
                 },
                 trailing: IconButton(
+                  tooltip: context.appLocalizations.blockConnection,
                   padding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                   style: IconButton.styleFrom(minimumSize: Size.zero),

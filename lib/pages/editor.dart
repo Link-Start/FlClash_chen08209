@@ -260,6 +260,7 @@ class _EditorSaveAction extends StatelessWidget {
               controller.text != savedContent ||
               titleController.text != savedTitle;
           return IconButton(
+            tooltip: context.appLocalizations.save,
             onPressed: isDirty
                 ? () => onSave(context, titleController.text, controller.text)
                 : null,
@@ -297,6 +298,7 @@ class _EditorMenuAction extends ConsumerWidget {
         return CommonPopupBox(
           targetBuilder: (open) {
             return IconButton(
+              tooltip: context.appLocalizations.more,
               onPressed: () {
                 final isMobile = ref.read(isMobileViewProvider);
                 open(offset: Offset(0, isMobile ? 0 : 20));
@@ -532,6 +534,7 @@ class FindPanel extends StatelessWidget implements PreferredSizeWidget {
                           controller.previousMatch();
                         },
                   icon: Icons.arrow_upward,
+                  tooltip: context.appLocalizations.previousMatch,
                 ),
                 _buildIconButton(
                   onPressed: value.result == null
@@ -540,9 +543,11 @@ class FindPanel extends StatelessWidget implements PreferredSizeWidget {
                           controller.nextMatch();
                         },
                   icon: Icons.arrow_downward,
+                  tooltip: context.appLocalizations.nextMatch,
                 ),
                 const SizedBox(width: 2),
                 IconButton.filledTonal(
+                  tooltip: context.appLocalizations.close,
                   onPressed: controller.close,
                   icon: const Icon(Icons.close, size: 16),
                 ),
@@ -657,8 +662,16 @@ class FindPanel extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _buildIconButton({required IconData icon, VoidCallback? onPressed}) {
-    return IconButton(onPressed: onPressed, icon: Icon(icon, size: 16));
+  Widget _buildIconButton({
+    required IconData icon,
+    required String tooltip,
+    VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+    );
   }
 }
 

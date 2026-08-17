@@ -535,6 +535,7 @@ class _GroupActions extends StatelessWidget {
       children: [
         if (isExpand) ...[
           IconButton(
+            tooltip: context.appLocalizations.scrollToSelected,
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.all(2),
             onPressed: onScrollToSelected,
@@ -544,6 +545,7 @@ class _GroupActions extends StatelessWidget {
           ),
           const SizedBox(width: 2),
           IconButton(
+            tooltip: context.appLocalizations.delayTest,
             iconSize: 20,
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.all(2),
@@ -555,6 +557,9 @@ class _GroupActions extends StatelessWidget {
         ] else
           const SizedBox(width: 6),
         IconButton.filledTonal(
+          tooltip: isExpand
+              ? context.appLocalizations.showLess
+              : context.appLocalizations.showMore,
           visualDensity: VisualDensity.compact,
           padding: const EdgeInsets.all(2),
           iconSize: 24,

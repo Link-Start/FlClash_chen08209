@@ -63,6 +63,7 @@ class RuleItem extends StatelessWidget {
   Widget _buildInfoWidget(BuildContext context) {
     return CommonMinIconButtonTheme(
       child: IconButton(
+        tooltip: context.appLocalizations.tip,
         onPressed: () {
           dialogs.showMessage(
             message: TextSpan(

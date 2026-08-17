@@ -29,6 +29,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
     return [
       if (_isTab)
         IconButton(
+          tooltip: context.appLocalizations.scrollToSelected,
           onPressed: () {
             _proxiesTabKey.currentState?.scrollToGroupSelected();
           },
@@ -37,6 +38,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       CommonPopupBox(
         targetBuilder: (open) {
           return IconButton(
+            tooltip: context.appLocalizations.more,
             onPressed: () {
               final isMobile = ref.read(isMobileViewProvider);
               open(offset: Offset(0, isMobile ? 0 : 20));

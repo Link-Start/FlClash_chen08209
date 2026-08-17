@@ -185,6 +185,7 @@ class _AdaptiveSheetScaffoldState extends State<AdaptiveSheetScaffold> {
                   IconButtonData(
                     icon: Icons.close,
                     onPressed: context.safeNestedPop,
+                    tooltip: context.appLocalizations.close,
                   ),
                 )
               : buildIconButton(
@@ -195,6 +196,7 @@ class _AdaptiveSheetScaffoldState extends State<AdaptiveSheetScaffold> {
                         () {
                           Navigator.of(context).pop();
                         },
+                    tooltip: context.appLocalizations.back,
                   ),
                 ))
         : null;
@@ -258,12 +260,18 @@ class _SheetIconButton extends StatelessWidget {
     final icon = Icon(data.icon);
     if (filled) {
       return IconButton.filledTonal(
+        tooltip: data.tooltip,
         onPressed: data.onPressed,
         style: _style,
         icon: icon,
       );
     }
-    return IconButton(onPressed: data.onPressed, style: _style, icon: icon);
+    return IconButton(
+      tooltip: data.tooltip,
+      onPressed: data.onPressed,
+      style: _style,
+      icon: icon,
+    );
   }
 }
 

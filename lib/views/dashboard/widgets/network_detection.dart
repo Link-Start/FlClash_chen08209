@@ -72,6 +72,7 @@ class _NetworkDetectionState extends ConsumerState<NetworkDetection> {
                   AspectRatio(
                     aspectRatio: 1,
                     child: IconButton(
+                      tooltip: appLocalizations.tip,
                       padding: EdgeInsets.zero,
                       onPressed: () {
                         dialogs.showMessage(

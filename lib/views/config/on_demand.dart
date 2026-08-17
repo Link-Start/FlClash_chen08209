@@ -275,6 +275,7 @@ class _OnDemandViewState extends ConsumerState<OnDemandView>
         if (hasSelection)
           CommonMinIconButtonTheme(
             child: IconButton.filledTonal(
+              tooltip: context.appLocalizations.delete,
               onPressed: _handleDelete,
               icon: const Icon(Icons.delete),
             ),

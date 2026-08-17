@@ -57,6 +57,7 @@ class OverwriteDismissItem extends ConsumerWidget {
             contentPadding: const EdgeInsets.only(left: 16, right: 0),
             leading: CommonMinIconButtonTheme(
               child: IconButton.filledTonal(
+                tooltip: context.appLocalizations.remove,
                 onPressed: onRemove,
                 icon: const Icon(Icons.remove, size: 18),
                 padding: EdgeInsets.zero,

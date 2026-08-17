@@ -108,6 +108,7 @@ class _NameAddPickerState extends ConsumerState<NameAddPicker>
             subtitle: subtitle == null ? null : Text(subtitle),
             trailing: CommonMinIconButtonTheme(
               child: IconButton.filledTonal(
+                tooltip: context.appLocalizations.add,
                 onPressed: onAdd,
                 icon: const Icon(Icons.add, size: 18),
               ),

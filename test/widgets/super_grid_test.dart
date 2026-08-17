@@ -3,6 +3,8 @@ import 'package:fl_clash/widgets/super_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/test_app.dart';
+
 GridItem _item(String label, {int crossAxisCellCount = 2}) {
   return GridItem(
     crossAxisCellCount: crossAxisCellCount,
@@ -26,8 +28,8 @@ void main() {
     var updates = 0;
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
+      TestApp(
+        child: Scaffold(
           body: SingleChildScrollView(
             child: SuperGrid(
               key: key,
@@ -75,8 +77,8 @@ void main() {
     final key = GlobalKey<SuperGridState>();
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
+      TestApp(
+        child: Scaffold(
           body: SingleChildScrollView(
             child: SuperGrid(
               key: key,
@@ -115,8 +117,8 @@ void main() {
     final key = GlobalKey<SuperGridState>();
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
+      TestApp(
+        child: Scaffold(
           body: SingleChildScrollView(
             child: SuperGrid(
               key: key,

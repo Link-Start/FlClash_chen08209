@@ -737,6 +737,7 @@ class _DeletableContainerState extends State<_DeletableContainer>
                 width: 24,
                 height: 24,
                 child: IconButton.filled(
+                  tooltip: context.appLocalizations.remove,
                   iconSize: 20,
                   padding: const EdgeInsets.all(2),
                   onPressed: _handleDel,

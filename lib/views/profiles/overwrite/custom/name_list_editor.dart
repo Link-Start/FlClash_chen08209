@@ -242,6 +242,7 @@ class _IncludeAllCard extends StatelessWidget {
             Text(label),
             CommonMinIconButtonTheme(
               child: IconButton(
+                tooltip: context.appLocalizations.tip,
                 padding: EdgeInsets.zero,
                 onPressed: () {
                   dialogs.showMessage(

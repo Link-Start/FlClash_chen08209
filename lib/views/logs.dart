@@ -38,6 +38,7 @@ class _LogsViewState extends ConsumerState<LogsView> {
   List<Widget> _buildActions() {
     return [
       IconButton(
+        tooltip: context.appLocalizations.exportLogs,
         onPressed: () {
           _handleExport();
         },

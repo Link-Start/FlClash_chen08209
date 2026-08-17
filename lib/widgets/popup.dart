@@ -350,6 +350,7 @@ class _CommonPopupMenuItemsState extends State<_CommonPopupMenuItems> {
             spacing: 4,
             children: [
               IconButton(
+                tooltip: context.appLocalizations.back,
                 icon: Icon(
                   Icons.arrow_back_outlined,
                   color: context.colorScheme.onSurfaceVariant.opacity80,

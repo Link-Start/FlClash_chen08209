@@ -360,6 +360,7 @@ class _AddOrEditRuleViewState extends ConsumerState<_AddOrEditRuleView> {
               if (invalid)
                 CommonMinIconButtonTheme(
                   child: IconButton(
+                    tooltip: appLocalizations.tip,
                     onPressed: () {
                       dialogs.showMessage(
                         message: TextSpan(
@@ -492,7 +493,13 @@ class _AddOrEditRuleViewState extends ConsumerState<_AddOrEditRuleView> {
     final rule = ref.watch(ruleProvider);
     final height = ref.sheetHeight(context, 0.60);
     return AdaptiveSheetScaffold(
-      actions: [IconButtonData(icon: Icons.check, onPressed: _handleSave)],
+      actions: [
+        IconButtonData(
+          icon: Icons.check,
+          onPressed: _handleSave,
+          tooltip: context.appLocalizations.save,
+        ),
+      ],
       sheetTransparentToolBar: true,
       body: Container(
         constraints: BoxConstraints(maxHeight: height),

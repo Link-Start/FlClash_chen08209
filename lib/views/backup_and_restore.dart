@@ -509,6 +509,9 @@ class _WebDAVFormDialogState extends ConsumerState<WebDAVFormDialog> {
                     prefixIcon: const Icon(Icons.password),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
+                      tooltip: obscure
+                          ? context.appLocalizations.hidePassword
+                          : context.appLocalizations.showPassword,
                       icon: Icon(
                         obscure ? Icons.visibility : Icons.visibility_off,
                       ),
