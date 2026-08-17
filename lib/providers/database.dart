@@ -197,156 +197,111 @@ Future<Script?> script(Ref ref, int? scriptId) async {
   return script;
 }
 
+/// The list mutations the global and per-profile rule notifiers share.
+///
+/// Auto-ordering a new rule, the fractional key between its neighbours and the
+/// optimistic list rewrite are identical for all three; only the row a write
+/// lands in differs, which is what [persistRule] and [persistOrder] name.
+mixin RuleListMixin on OptimisticMixin<List<Rule>> {
+  /// Writes [rule] to the scene this notifier owns.
+  Future<void> persistRule(Rule rule);
+
+  /// Moves [ruleId] to [order] within the scene this notifier owns.
+  Future<void> persistOrder({required int ruleId, required String order});
+
+  @override
+  List<Rule> get value => state.value ?? [];
+
+  @override
+  bool updateShouldNotify(
+    AsyncValue<List<Rule>> previous,
+    AsyncValue<List<Rule>> next,
+  ) {
+    return !ruleListEquality.equals(previous.value, next.value);
+  }
+
+  void put(Rule rule) {
+    final newRule = rule.autoOrder(rule, null, value.firstOrNull?.order);
+    optimistic(
+      value.copyAndPut(newRule, (rule) => rule.id == newRule.id),
+      () => persistRule(newRule),
+    );
+  }
+
+  void delAll(Iterable<int> ruleIds) {
+    optimistic(
+      value.where((item) => !ruleIds.contains(item.id)).toList(),
+      () => database.rulesDao.delRules(ruleIds),
+    );
+  }
+
+  void order(int oldIndex, int newIndex) {
+    final item = value[oldIndex];
+    final nextItems = value.copyAndReorder(oldIndex, newIndex);
+    final newOrder = indexing.generateKeyBetween(
+      nextItems.safeGet(newIndex - 1)?.order,
+      nextItems.safeGet(newIndex + 1)?.order,
+    )!;
+    optimistic(nextItems, () => persistOrder(ruleId: item.id, order: newOrder));
+  }
+}
+
 @riverpod
 class GlobalRules extends _$GlobalRules
-    with AsyncNotifierMixin, OptimisticMixin {
+    with AsyncNotifierMixin, OptimisticMixin, RuleListMixin {
   @override
   Stream<List<Rule>> build() {
     return database.rulesDao.queryGlobalAddedRules().watch();
   }
 
   @override
-  List<Rule> get value => state.value ?? [];
+  Future<void> persistRule(Rule rule) => database.rulesDao.putGlobalRule(rule);
 
   @override
-  bool updateShouldNotify(
-    AsyncValue<List<Rule>> previous,
-    AsyncValue<List<Rule>> next,
-  ) {
-    return !ruleListEquality.equals(previous.value, next.value);
-  }
-
-  void delAll(Iterable<int> ruleIds) {
-    optimistic(
-      value.where((item) => !ruleIds.contains(item.id)).toList(),
-      () => database.rulesDao.delRules(ruleIds),
-    );
-  }
-
-  void put(Rule rule) {
-    final newRule = rule.autoOrder(rule, null, value.firstOrNull?.order);
-    optimistic(
-      value.copyAndPut(newRule, (rule) => rule.id == newRule.id),
-      () => database.rulesDao.putGlobalRule(newRule),
-    );
-  }
-
-  void order(int oldIndex, int newIndex) {
-    final item = value[oldIndex];
-    final nextItems = value.copyAndReorder(oldIndex, newIndex);
-    final newOrder = indexing.generateKeyBetween(
-      nextItems.safeGet(newIndex - 1)?.order,
-      nextItems.safeGet(newIndex + 1)?.order,
-    )!;
-    optimistic(
-      nextItems,
-      () => database.rulesDao.orderGlobalRule(ruleId: item.id, order: newOrder),
-    );
-  }
+  Future<void> persistOrder({required int ruleId, required String order}) =>
+      database.rulesDao.orderGlobalRule(ruleId: ruleId, order: order);
 }
 
 @riverpod
 class ProfileAddedRules extends _$ProfileAddedRules
-    with AsyncNotifierMixin, OptimisticMixin {
+    with AsyncNotifierMixin, OptimisticMixin, RuleListMixin {
   @override
   Stream<List<Rule>> build(int profileId) {
     return database.rulesDao.queryProfileAddedRules(profileId).watch();
   }
 
   @override
-  List<Rule> get value => state.value ?? [];
+  Future<void> persistRule(Rule rule) =>
+      database.rulesDao.putProfileAddedRule(profileId, rule);
 
   @override
-  bool updateShouldNotify(
-    AsyncValue<List<Rule>> previous,
-    AsyncValue<List<Rule>> next,
-  ) {
-    return !ruleListEquality.equals(previous.value, next.value);
-  }
-
-  void put(Rule rule) {
-    final newRule = rule.autoOrder(rule, null, value.firstOrNull?.order);
-    optimistic(
-      value.copyAndPut(newRule, (rule) => rule.id == newRule.id),
-      () => database.rulesDao.putProfileAddedRule(profileId, newRule),
-    );
-  }
-
-  void delAll(Iterable<int> ruleIds) {
-    optimistic(
-      value.where((item) => !ruleIds.contains(item.id)).toList(),
-      () => database.rulesDao.delRules(ruleIds),
-    );
-  }
-
-  void order(int oldIndex, int newIndex) {
-    final item = value[oldIndex];
-    final nextItems = value.copyAndReorder(oldIndex, newIndex);
-    final newOrder = indexing.generateKeyBetween(
-      nextItems.safeGet(newIndex - 1)?.order,
-      nextItems.safeGet(newIndex + 1)?.order,
-    )!;
-    optimistic(
-      nextItems,
-      () => database.rulesDao.orderProfileAddedRule(
+  Future<void> persistOrder({required int ruleId, required String order}) =>
+      database.rulesDao.orderProfileAddedRule(
         profileId,
-        ruleId: item.id,
-        order: newOrder,
-      ),
-    );
-  }
+        ruleId: ruleId,
+        order: order,
+      );
 }
 
 @riverpod
 class ProfileCustomRules extends _$ProfileCustomRules
-    with AsyncNotifierMixin, OptimisticMixin {
+    with AsyncNotifierMixin, OptimisticMixin, RuleListMixin {
   @override
   Stream<List<Rule>> build(int profileId) {
     return database.rulesDao.queryProfileCustomRules(profileId).watch();
   }
 
   @override
-  List<Rule> get value => state.value ?? [];
+  Future<void> persistRule(Rule rule) =>
+      database.rulesDao.putProfileCustomRule(profileId, rule);
 
   @override
-  bool updateShouldNotify(
-    AsyncValue<List<Rule>> previous,
-    AsyncValue<List<Rule>> next,
-  ) {
-    return !ruleListEquality.equals(previous.value, next.value);
-  }
-
-  void put(Rule rule) {
-    final newRule = rule.autoOrder(rule, null, value.firstOrNull?.order);
-    optimistic(
-      value.copyAndPut(newRule, (rule) => rule.id == newRule.id),
-      () => database.rulesDao.putProfileCustomRule(profileId, newRule),
-    );
-  }
-
-  void delAll(Iterable<int> ruleIds) {
-    optimistic(
-      value.where((item) => !ruleIds.contains(item.id)).toList(),
-      () => database.rulesDao.delRules(ruleIds),
-    );
-  }
-
-  void order(int oldIndex, int newIndex) {
-    final item = value[oldIndex];
-    final nextItems = value.copyAndReorder(oldIndex, newIndex);
-    final newOrder = indexing.generateKeyBetween(
-      nextItems.safeGet(newIndex - 1)?.order,
-      nextItems.safeGet(newIndex + 1)?.order,
-    )!;
-    optimistic(
-      nextItems,
-      () => database.rulesDao.orderProfileCustomRule(
+  Future<void> persistOrder({required int ruleId, required String order}) =>
+      database.rulesDao.orderProfileCustomRule(
         profileId,
-        ruleId: item.id,
-        order: newOrder,
-      ),
-    );
-  }
+        ruleId: ruleId,
+        order: order,
+      );
 }
 
 @riverpod

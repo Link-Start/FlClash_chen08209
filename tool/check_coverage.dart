@@ -26,7 +26,7 @@ const _groupFloors = <String, double>{
   'providers': 73.0,
   'common': 74.0,
   'manager': 71.0,
-  'views': 68.0,
+  'views': 69.0,
   'enum': 89.0,
   'pages': 72.0,
   'plugins': 70.0,
