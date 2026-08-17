@@ -503,6 +503,10 @@ Windows helper integrity/version check:
 - `/stop` requires the same session ID. A missing process returns `notRunning`; a different owner returns
   `sessionMismatch` without terminating that process. Session IDs are ownership tokens for lifecycle safety, not a claim
   that the loopback HTTP endpoints are authenticated.
+- Never take `MANAGED_CORE` or `LOGS` with `lock().unwrap()`. The Helper is a long-lived service running as SYSTEM, so a
+  single panic while a lock is held would poison it and turn every later request into another panic — the service stays
+  dead until Windows restarts it. `lock_surviving_poison` recovers the guard through `PoisonError::into_inner` instead.
+  `hub.rs` uses it at every lock site, tests included, and two tests in that file pin the behaviour.
 
 Build configuration defaults live in `build_tool/lib/src/options.dart` and can be overridden via a root `build_config.yaml`.
 
